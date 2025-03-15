@@ -362,8 +362,18 @@ def process_message_with_context(message, context):
         for prev_msg, prev_resp, ctx in context:
             context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
     
-    # Combine context with current message
-    prompt = f"{context_text}\nCurrent message: {message}\n\nPlease provide a response that takes into account the context of previous conversations if relevant."
+    # Get relevant knowledge
+    keywords = message.lower().split()
+    knowledge_text = ""
+    for keyword in keywords:
+        knowledge = db.get_knowledge(keyword)
+        if knowledge:
+            knowledge_text += "\nStored knowledge:\n"
+            for info in knowledge:
+                knowledge_text += f"• {info[0]}\n"
+    
+    # Combine context with current message and knowledge
+    prompt = f"{context_text}\n{knowledge_text}\nCurrent message: {message}\n\nPlease provide a response that takes into account both the context of previous conversations and the stored knowledge if relevant."
     
     try:
         # Generate response using Gemini
