@@ -291,6 +291,7 @@ I'm your AI assistant! Here's what I can do:
 • /about - Learn about sqrDAO
 • /events - View sqrDAO events calendar
 • /contact - Get contact information
+• /resources - Access internal resources (members only)
 """
 
     if is_authorized or is_regular_member:
@@ -581,6 +582,7 @@ Here are our internal resources:
 • <b>AWS Credits Guide:</b> https://drive.google.com/file/d/12DjM2P5x0T_koLI6o_UMXMo_LUJpYrXL/view?usp=sharing
 • <b>AWS Org ID ($10K):</b> 3Ehcy
 • <b>Legal Service (20% off):</b> https://teamoutlaw.io/
+• <b>SqrDAO Brand Kit:</b> https://sqrdao.notion.site/sqrdao-brand-kit
 
 For access issues, please contact the team.
 """
