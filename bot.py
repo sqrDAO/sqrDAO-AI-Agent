@@ -263,7 +263,7 @@ def search_web(query, num_results=5):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
     welcome_message = (
-        "👋 <b>Hello!</b> I'm your AI assistant powered by Gemini. "
+        "👋 <b>Hello!</b> I'm your AI assistant powered by Gemini, developed by sqrFUND. "
         "You can ask me anything, and I'll do my best to help you!\n\n"
         "I can:\n"
         "• Answer your questions about sqrDAO\n"
@@ -283,7 +283,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
 <b>🤖 sqrAgent Help</b>
 
-I'm your AI assistant! Here's what I can do:
+I'm your AI assistant developed by sqrFUND! Here's what I can do:
 
 <b>Available Commands:</b>
 • /start - Start the bot and get welcome message
@@ -534,12 +534,13 @@ async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /contact command."""
     contact_text = """
-<b>Contact sqrDAO</b>
+<b>Contact Information</b>
 
-You can reach us through:
-• Website: https://sqrdao.com
-• Email: gm@sqrdao.com
-• Twitter: @sqrdao
+Get in touch with us:
+• Email: dev@sqrfund.ai
+• X (Twitter): @sqrfund
+• Telegram: @sqrfund_ai
+• Website: https://sqrfund.ai
 """
     await update.message.reply_text(contact_text, parse_mode=ParseMode.HTML)
 

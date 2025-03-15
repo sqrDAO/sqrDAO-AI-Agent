@@ -1,8 +1,12 @@
 # sqrDAO AI Agent
 
-A Telegram bot powered by Google's Gemini AI model to assist sqrDAO members and users.
+A Telegram bot powered by Google's Gemini AI model to assist sqrDAO members and users. Developed and maintained by [sqrFUND](https://sqrfund.ai).
 
 🤖 **Try it now**: [t.me/sqrAgent_bot](https://t.me/sqrAgent_bot)
+
+## About
+
+This AI agent is a project by sqrFUND, providing intelligent assistance for the sqrDAO community. It leverages Google's Gemini AI to deliver context-aware responses and manage community resources effectively.
 
 ## Features
 
@@ -151,14 +155,14 @@ sudo systemctl start sqrdao-bot
 
 ## License
 
-This project is proprietary and confidential. All rights reserved by sqrDAO.
+This project is proprietary and confidential. © 2024 sqrFUND. All rights reserved.
 
 ## Support
 
 Get in touch with us:
-- 📧 Email: gm@sqrdao.com
-- 🐦 X (Twitter): [@sqrdao](https://twitter.com/sqrdao)
-- 💬 Telegram: [@sqrdao](https://t.me/sqrdao)
-- 🤖 AI Agent: [@sqrAgent_bot](https://t.me/sqrAgent_bot)
+- 📧 Email: dev@sqrfund.ai
+- 🐦 X (Twitter): [@sqrfund](https://twitter.com/sqrfund)
+- 💬 Telegram channel: [@sqrfund_ai](https://t.me/sqrfund_ai)
+- 🌐 Website: [sqrfund.ai](https://sqrfund.ai)
 
 Join our community channels for updates and discussions! 
