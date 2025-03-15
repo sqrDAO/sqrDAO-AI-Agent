@@ -4,12 +4,15 @@ After=network.target
 
 [Service]
 Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/sqrDAO-AI-Agent
-Environment=PATH=/home/ubuntu/sqrDAO-AI-Agent/venv/bin
-ExecStart=/home/ubuntu/sqrDAO-AI-Agent/venv/bin/python bot.py
-Restart=always
+User=longpham
+WorkingDirectory=/home/longpham/sqrDAO-AI-Agent
+Environment=PATH=/home/longpham/sqrDAO-AI-Agent/venv/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/longpham/sqrDAO-AI-Agent/venv/bin/python -u bot.py
+Restart=on-failure
 RestartSec=5
+StandardOutput=append:/var/log/sqrdao-bot.log
+StandardError=append:/var/log/sqrdao-bot.error.log
 
 [Install]
-WantedBy=multi-user.target 
+WantedBy=multi-user.target

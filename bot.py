@@ -13,6 +13,8 @@ from googleapiclient.discovery import build
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import sqlite3
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -230,85 +232,202 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /help is issued."""
-    help_text = (
-        "Here are the available commands:\n"
-        "/start - Start the conversation\n"
-        "/help - Show this help message\n\n"
-        "<b>Features:</b>\n"
-        "• Ask any question\n"
-        "• Share URLs for analysis\n"
-        "• Get real-time web search results\n"
-        "• Receive detailed explanations\n\n"
-        "The more specific your question, the better I can help you!"
-    )
+    help_text = """
+<b>🤖 sqrDAO Bot Help</b>
+
+I'm your AI assistant! Here's what I can do:
+
+<b>Commands:</b>
+• /start - Start the bot
+• /help - Show this help message
+• /learn - Teach me new information
+  Format: /learn topic | information | source(optional)
+  Example: /learn crypto | Bitcoin is a cryptocurrency | bitcoin.org
+
+<b>Features:</b>
+• I remember our conversations and use them for context
+• I can learn new information that you teach me
+• I provide detailed responses using my knowledge base
+
+Just send me a message and I'll do my best to help you!
+"""
     await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
+
+async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /learn command to store new knowledge."""
+    try:
+        # Expected format: /learn topic | information | source(optional)
+        args = ' '.join(context.args)
+        if not args or '|' not in args:
+            await update.message.reply_text(
+                "<i>Please use the format: /learn topic | information | source(optional)</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        parts = [part.strip() for part in args.split('|')]
+        topic = parts[0]
+        information = parts[1]
+        source = parts[2] if len(parts) > 2 else None
+
+        # Store the knowledge
+        db.store_knowledge(topic, information, source)
+        
+        await update.message.reply_text(
+            f"<i>✅ I've learned new information about {topic}!</i>",
+            parse_mode=ParseMode.HTML
+        )
+
+    except Exception as e:
+        logger.error(f"Error in learn_command: {str(e)}")
+        await update.message.reply_text(
+            "<i>I encountered an error while learning. Please try again.</i>",
+            parse_mode=ParseMode.HTML
+        )
+
+class Database:
+    def __init__(self):
+        self.conn = sqlite3.connect('bot_memory.db')
+        self.cursor = self.conn.cursor()
+        self.setup_database()
+
+    def setup_database(self):
+        # Create tables for storing conversations and knowledge
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                message TEXT,
+                response TEXT,
+                timestamp DATETIME,
+                context TEXT
+            )
+        ''')
+        
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS knowledge_base (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic TEXT,
+                information TEXT,
+                source TEXT,
+                timestamp DATETIME
+            )
+        ''')
+        self.conn.commit()
+
+    def store_conversation(self, user_id, message, response, context=None):
+        self.cursor.execute('''
+            INSERT INTO conversations (user_id, message, response, timestamp, context)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, message, response, datetime.now(), context))
+        self.conn.commit()
+
+    def store_knowledge(self, topic, information, source=None):
+        self.cursor.execute('''
+            INSERT INTO knowledge_base (topic, information, source, timestamp)
+            VALUES (?, ?, ?, ?)
+        ''', (topic, information, source, datetime.now()))
+        self.conn.commit()
+
+    def get_relevant_context(self, user_id, message, limit=5):
+        # Simple keyword-based search for now
+        keywords = message.lower().split()
+        query = '''
+            SELECT message, response, context
+            FROM conversations
+            WHERE user_id = ? AND (
+        ''' + ' OR '.join(['lower(message) LIKE ?' for _ in keywords]) + ')'
+        params = [user_id] + ['%' + keyword + '%' for keyword in keywords]
+        
+        self.cursor.execute(query + ' ORDER BY timestamp DESC LIMIT ?', 
+                          params + [limit])
+        return self.cursor.fetchall()
+
+    def get_knowledge(self, topic):
+        self.cursor.execute('''
+            SELECT information
+            FROM knowledge_base
+            WHERE lower(topic) LIKE lower(?)
+        ''', ('%' + topic + '%',))
+        return self.cursor.fetchall()
+
+# Initialize database
+db = Database()
+
+def process_message_with_context(message, context):
+    # Prepare context for the model
+    context_text = ""
+    if context:
+        context_text = "Previous relevant conversations:\n"
+        for prev_msg, prev_resp, ctx in context:
+            context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
+    
+    # Combine context with current message
+    prompt = f"{context_text}\nCurrent message: {message}\n\nPlease provide a response that takes into account the context of previous conversations if relevant."
+    
+    try:
+        # Generate response using Gemini
+        response = model.generate_content(prompt)
+        
+        if not hasattr(response, 'text') or not response.text:
+            return "I apologize, but I couldn't generate a response. Please try rephrasing your question."
+            
+        return response.text
+        
+    except Exception as e:
+        logger.error(f"Error generating response: {str(e)}")
+        return "I encountered an error while processing your message. Please try again."
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming messages and generate responses using Gemini."""
-    try:
-        user_message = update.message.text
-        logger.debug(f"Received message: {user_message}")
-        
-        # Send typing action
-        await update.message.chat.send_action(action="typing")
-        
-        try:
-            # Generate response using Gemini
-            logger.debug("Generating response with Gemini...")
-            response = model.generate_content(user_message)
-            logger.debug(f"Raw response from Gemini: {response}")
-            
-            if not hasattr(response, 'text'):
-                logger.error("Response object has no 'text' attribute")
-                await update.message.reply_text(
-                    "<i>I apologize, but I received an invalid response format. Please try again.</i>",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-                
-            if not response.text:
-                logger.error("Response text is empty")
-                await update.message.reply_text(
-                    "<i>I apologize, but I couldn't generate a response. Please try rephrasing your question.</i>",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            
-            # Format and send response with HTML formatting
-            formatted_text = format_response_for_telegram(response.text)
-            logger.debug(f"Formatted text: {formatted_text}")  # Add debug logging
-            
-            # Split long messages if needed (Telegram has a 4096 character limit)
-            if len(formatted_text) > 4000:
-                chunks = [formatted_text[i:i+4000] for i in range(0, len(formatted_text), 4000)]
-                for chunk in chunks:
-                    await update.message.reply_text(
-                        chunk,
-                        parse_mode=ParseMode.HTML,
-                        disable_web_page_preview=True
-                    )
-            else:
-                await update.message.reply_text(
-                    formatted_text,
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=True
-                )
-            
-        except Exception as gemini_error:
-            logger.error(f"Gemini API error: {str(gemini_error)}")
-            logger.error(f"Gemini error traceback: {traceback.format_exc()}")
-            await update.message.reply_text(
-                f"<i>I encountered an error: {str(gemini_error)}\nPlease try again with a different question.</i>",
-                parse_mode=ParseMode.HTML
-            )
-            
-    except Exception as e:
-        logger.error(f"Error in handle_message: {str(e)}")
-        logger.error(f"Full traceback: {traceback.format_exc()}")
+    user_message = update.message.text
+    chat_id = update.message.chat_id
+    
+    if not user_message:
         await update.message.reply_text(
-            "<i>I apologize, but something went wrong. Please try again.</i>",
+            "<i>I couldn't process an empty message. Please send some text.</i>",
             parse_mode=ParseMode.HTML
         )
+        return
+        
+    logger.debug(f"Received message: {user_message}")
+    
+    # Check if the message is a command
+    if user_message.startswith('/'):
+        await update.message.reply_text(
+            "<i>Please use specific commands like /help, or send a regular message.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+        
+    try:
+        # Get relevant context from previous conversations
+        relevant_context = db.get_relevant_context(update.effective_user.id, user_message)
+        
+        # Process the message with context
+        response = process_message_with_context(user_message, relevant_context)
+        
+        # Store the conversation
+        db.store_conversation(update.effective_user.id, user_message, response)
+        
+        # Format and send response with HTML formatting
+        formatted_text = format_response_for_telegram(response)
+        logger.debug(f"Formatted text: {formatted_text}")  # Add debug logging
+        
+        await update.message.reply_text(
+            formatted_text,
+            parse_mode=ParseMode.HTML
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
+        await update.message.reply_text(
+            "<i>I encountered an error while processing your message. Please try again.</i>",
+            parse_mode=ParseMode.HTML
+        )
+
+def store_new_knowledge(topic, information, source=None):
+    db.store_knowledge(topic, information, source)
 
 def main():
     """Start the bot."""
@@ -323,6 +442,7 @@ def main():
         # Add handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("learn", learn_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # Start the Bot
