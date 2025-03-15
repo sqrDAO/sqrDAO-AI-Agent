@@ -15,7 +15,6 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import sqlite3
 from datetime import datetime
-import asyncio
 
 # Load environment variables
 load_dotenv()
