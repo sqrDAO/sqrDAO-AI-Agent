@@ -2,6 +2,8 @@
 
 A Telegram bot powered by Google's Gemini AI model to assist sqrDAO members and users.
 
+🤖 **Try it now**: [t.me/sqrAgent_bot](https://t.me/sqrAgent_bot)
+
 ## Features
 
 - 🤖 AI-powered conversations using Gemini 1.5 Pro
@@ -153,4 +155,10 @@ This project is proprietary and confidential. All rights reserved by sqrDAO.
 
 ## Support
 
-For support, contact us at gm@sqrdao.com or join our community channels. 
+Get in touch with us:
+- 📧 Email: gm@sqrdao.com
+- 🐦 X (Twitter): [@sqrdao](https://twitter.com/sqrdao)
+- 💬 Telegram: [@sqrdao](https://t.me/sqrdao)
+- 🤖 AI Agent: [@sqrAgent_bot](https://t.me/sqrAgent_bot)
+
+Join our community channels for updates and discussions! 
