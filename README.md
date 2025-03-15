@@ -161,7 +161,7 @@ This project is proprietary and confidential. © 2024 sqrFUND. All rights reserv
 
 Get in touch with us:
 - 📧 Email: dev@sqrfund.ai
-- 🐦 X (Twitter): [@sqrfund](https://twitter.com/sqrfund)
+- 🐦 X (formerly Twitter): [@sqrfund_ai](https://x.com/sqrfund_ai)
 - 💬 Telegram channel: [@sqrfund_ai](https://t.me/sqrfund_ai)
 - 🌐 Website: [sqrfund.ai](https://sqrfund.ai)
 

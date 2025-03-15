@@ -283,7 +283,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
 <b>🤖 sqrAgent Help</b>
 
-I'm your AI assistant developed by sqrFUND! Here's what I can do:
+I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 
 <b>Available Commands:</b>
 • /start - Start the bot and get welcome message
