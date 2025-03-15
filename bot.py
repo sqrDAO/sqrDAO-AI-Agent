@@ -28,15 +28,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load authorized members from config file
+# Load authorized members and members from config file
 try:
     with open('config.json', 'r') as f:
         config = json.load(f)
         AUTHORIZED_MEMBERS = config.get('authorized_members', [])
+        MEMBERS = config.get('members', [])
 except Exception as e:
     logger.error(f"Error loading config.json: {str(e)}")
-    logger.error("Falling back to empty authorized members list")
+    logger.error("Falling back to empty members lists")
     AUTHORIZED_MEMBERS = []
+    MEMBERS = []
 
 def is_member(func):
     """Decorator to check if user is an authorized member."""
@@ -44,6 +46,21 @@ def is_member(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
         if user.username and user.username in AUTHORIZED_MEMBERS:
+            return await func(update, context)
+        else:
+            await update.message.reply_text(
+                "⚠️ This command is only available to sqrDAO authorized members.\n"
+                "Please contact us if you're a member and need access.",
+                parse_mode=ParseMode.HTML
+            )
+    return wrapper
+
+def is_any_member(func):
+    """Decorator to check if user is either an authorized member or regular member."""
+    @functools.wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        if user.username and (user.username in AUTHORIZED_MEMBERS or user.username in MEMBERS):
             return await func(update, context)
         else:
             await update.message.reply_text(
@@ -259,7 +276,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /help is issued."""
-    is_authorized = update.effective_user.username in AUTHORIZED_MEMBERS
+    user = update.effective_user
+    is_authorized = user.username in AUTHORIZED_MEMBERS
+    is_regular_member = user.username in MEMBERS
     
     help_text = """
 <b>🤖 sqrAgent Help</b>
@@ -274,10 +293,15 @@ I'm your AI assistant! Here's what I can do:
 • /contact - Get contact information
 """
 
+    if is_authorized or is_regular_member:
+        help_text += """
+<b>Member Commands:</b>
+• /resources - Access internal resources
+"""
+
     if is_authorized:
         help_text += """
-<b>Member-Only Commands:</b>
-• /resources - Access internal resources
+<b>Authorized Member Commands:</b>
 • /learn - Add information to knowledge base
 """
 
@@ -454,26 +478,38 @@ async def set_bot_commands(application):
         ("events", "View sqrDAO events")
     ]
     
-    # Additional commands for members
+    # Commands for regular members
     member_commands = basic_commands + [
-        ("resources", "Access internal resources"),
+        ("resources", "Access internal resources")
+    ]
+    
+    # Additional commands for authorized members
+    authorized_commands = member_commands + [
         ("learn", "Add information to knowledge base")
     ]
     
     # Set basic commands for all users
     await application.bot.set_my_commands(basic_commands)
     
-    # Set member commands for authorized users
-    for member in AUTHORIZED_MEMBERS:
+    # Set member commands for regular members
+    for member in MEMBERS:
         try:
-            # Get member's chat ID (this requires them to have interacted with the bot)
-            # You might want to store member chat IDs in a database for better handling
             await application.bot.set_my_commands(
                 member_commands,
                 scope=telegram.BotCommandScopeChat(member)
             )
         except Exception as e:
             logger.error(f"Failed to set commands for member {member}: {str(e)}")
+    
+    # Set authorized commands for authorized members
+    for member in AUTHORIZED_MEMBERS:
+        try:
+            await application.bot.set_my_commands(
+                authorized_commands,
+                scope=telegram.BotCommandScopeChat(member)
+            )
+        except Exception as e:
+            logger.error(f"Failed to set commands for authorized member {member}: {str(e)}")
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /about command."""
@@ -534,9 +570,9 @@ Stay updated with our latest events, workshops, and community gatherings!
 """
     await update.message.reply_text(events_text, parse_mode=ParseMode.HTML)
 
-@is_member
+@is_any_member
 async def resources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /resources command - Member only."""
+    """Handle /resources command - Available to all members."""
     resources_text = """
 <b>sqrDAO Members' Resources</b>
 
@@ -550,9 +586,9 @@ For access issues, please contact the team.
 """
     await update.message.reply_text(resources_text, parse_mode=ParseMode.HTML)
 
-@is_member
+@is_any_member
 async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /learn command - Member only."""
+    """Handle /learn command - Available to all members."""
     message = update.message.text.strip()
     
     # Check if the message starts with quotes for the topic
