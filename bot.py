@@ -15,6 +15,8 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import sqlite3
 from datetime import datetime
+import functools
+import telegram
 
 # Load environment variables
 load_dotenv()
@@ -25,6 +27,27 @@ logging.basicConfig(
     level=logging.DEBUG
 )
 logger = logging.getLogger(__name__)
+
+# List of authorized member handles (without @ symbol)
+AUTHORIZED_MEMBERS = [
+    "member1",
+    "member2",  # Add actual member handles here
+]
+
+def is_member(func):
+    """Decorator to check if user is an authorized member."""
+    @functools.wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        if user.username and user.username in AUTHORIZED_MEMBERS:
+            return await func(update, context)
+        else:
+            await update.message.reply_text(
+                "⚠️ This command is only available to sqrDAO members.\n"
+                "Please contact us if you're a member and need access.",
+                parse_mode=ParseMode.HTML
+            )
+    return wrapper
 
 # Configure API keys
 api_key = os.getenv('GEMINI_API_KEY')
@@ -232,6 +255,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /help is issued."""
+    is_authorized = update.effective_user.username in AUTHORIZED_MEMBERS
+    
     help_text = """
 <b>🤖 sqrDAO Bot Help</b>
 
@@ -243,7 +268,16 @@ I'm your AI assistant! Here's what I can do:
 • /about - Learn about sqrDAO
 • /events - View sqrDAO events calendar
 • /contact - Get contact information
+"""
 
+    if is_authorized:
+        help_text += """
+<b>Member-Only Commands:</b>
+• /resources - Access internal resources
+• /learn - Add information to knowledge base
+"""
+
+    help_text += """
 <b>Features:</b>
 • I remember our conversations and use them for context
 • I provide detailed responses using my knowledge base
@@ -406,16 +440,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def set_bot_commands(application):
     """Set bot commands with descriptions for the command menu."""
-    commands = [
+    # Basic commands for all users
+    basic_commands = [
         ("start", "Start the bot and get welcome message"),
         ("help", "Show help and list of available commands"),
         ("about", "Learn about sqrDAO"),
         ("website", "Get sqrDAO's website"),
         ("contact", "Get contact information"),
-        ("faq", "Frequently asked questions"),
         ("events", "View sqrDAO events")
     ]
-    await application.bot.set_my_commands(commands)
+    
+    # Additional commands for members
+    member_commands = basic_commands + [
+        ("resources", "Access internal resources"),
+        ("learn", "Add information to knowledge base")
+    ]
+    
+    # Set basic commands for all users
+    await application.bot.set_my_commands(basic_commands)
+    
+    # Set member commands for authorized users
+    for member in AUTHORIZED_MEMBERS:
+        try:
+            # Get member's chat ID (this requires them to have interacted with the bot)
+            # You might want to store member chat IDs in a database for better handling
+            await application.bot.set_my_commands(
+                member_commands,
+                scope=telegram.BotCommandScopeChat(member)
+            )
+        except Exception as e:
+            logger.error(f"Failed to set commands for member {member}: {str(e)}")
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /about command."""
@@ -476,6 +530,55 @@ Stay updated with our latest events, workshops, and community gatherings!
 """
     await update.message.reply_text(events_text, parse_mode=ParseMode.HTML)
 
+@is_member
+async def resources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /resources command - Member only."""
+    resources_text = """
+<b>sqrDAO Internal Resources</b>
+
+Here are our internal resources:
+• <b>Notion:</b> https://sqrdao.notion.site
+• <b>GitHub:</b> https://github.com/sqrdao
+• <b>Drive:</b> https://drive.google.com/drive/folders/sqrdao
+
+For access issues, please contact the team.
+"""
+    await update.message.reply_text(resources_text, parse_mode=ParseMode.HTML)
+
+@is_member
+async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /learn command - Member only."""
+    message = update.message.text.strip()
+    args = message.split(None, 2)  # Split into max 3 parts
+    
+    if len(args) < 3:
+        usage_text = """
+<b>Usage:</b> /learn [topic] [information]
+
+Example:
+/learn website Our new website is live at https://sqrdao.com
+
+This will store the information in the knowledge base for the given topic.
+"""
+        await update.message.reply_text(usage_text, parse_mode=ParseMode.HTML)
+        return
+    
+    topic = args[1]
+    information = args[2]
+    
+    try:
+        db.store_knowledge(topic, information)
+        await update.message.reply_text(
+            f"✅ Successfully stored information about <b>{topic}</b>.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        logger.error(f"Error storing knowledge: {str(e)}")
+        await update.message.reply_text(
+            "❌ Failed to store information. Please try again.",
+            parse_mode=ParseMode.HTML
+        )
+
 def main():
     """Start the bot."""
     try:
@@ -493,6 +596,8 @@ def main():
         application.add_handler(CommandHandler("website", website_command))
         application.add_handler(CommandHandler("contact", contact_command))
         application.add_handler(CommandHandler("events", events_command))
+        application.add_handler(CommandHandler("resources", resources_command))
+        application.add_handler(CommandHandler("learn", learn_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # Start the Bot
