@@ -24,4 +24,4 @@ Thumbs.db
 
 # Logs
 *.log
-logs/ 
+logs/ sqrdao-bot.service
