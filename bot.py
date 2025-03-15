@@ -538,12 +538,13 @@ Stay updated with our latest events, workshops, and community gatherings!
 async def resources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /resources command - Member only."""
     resources_text = """
-<b>sqrDAO Internal Resources</b>
+<b>sqrDAO Members' Resources</b>
 
 Here are our internal resources:
-• <b>Notion:</b> https://sqrdao.notion.site
 • <b>GitHub:</b> https://github.com/sqrdao
-• <b>Drive:</b> https://drive.google.com/drive/folders/sqrdao
+• <b>AWS Credits Guide:</b> https://drive.google.com/file/d/12DjM2P5x0T_koLI6o_UMXMo_LUJpYrXL/view?usp=sharing
+• <b>AWS Org ID ($10K):</b> 3Ehcy
+• <b>Legal Service (20% off):</b> https://teamoutlaw.io/
 
 For access issues, please contact the team.
 """
