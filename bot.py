@@ -28,17 +28,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# List of authorized member handles (without @ symbol)
-AUTHORIZED_MEMBERS = [
-    "DarthCastelian",
-    "kevintran25", 
-    "kaitlyn2032",
-    "Farosdozz",
-    "ashleyngxxxn",
-    "tuongdoan",
-    "arandomuserlol",
-    "hanjasonn"        # Add actual member handles here
-]
+# Load authorized members from config file
+try:
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+        AUTHORIZED_MEMBERS = config.get('authorized_members', [])
+except Exception as e:
+    logger.error(f"Error loading config.json: {str(e)}")
+    logger.error("Falling back to empty authorized members list")
+    AUTHORIZED_MEMBERS = []
 
 def is_member(func):
     """Decorator to check if user is an authorized member."""
