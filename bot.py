@@ -237,19 +237,23 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 I'm your AI assistant! Here's what I can do:
 
-<b>Commands:</b>
-• /start - Start the bot
+<b>Available Commands:</b>
+• /start - Start the bot and get welcome message
 • /help - Show this help message
 • /learn - Teach me new information
   Format: /learn topic | information | source(optional)
-  Example: /learn crypto | Bitcoin is a cryptocurrency | bitcoin.org
+• /about - Learn about SQR DAO
+• /website - Get SQR DAO's website
+• /trading - Learn about our trading approach
+• /contact - Get contact information
+• /faq - View frequently asked questions
 
 <b>Features:</b>
 • I remember our conversations and use them for context
 • I can learn new information that you teach me
 • I provide detailed responses using my knowledge base
 
-Just send me a message and I'll do my best to help you!
+Just send me a message or use any command to get started!
 """
     await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
 
@@ -439,6 +443,76 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def store_new_knowledge(topic, information, source=None):
     db.store_knowledge(topic, information, source)
 
+async def set_bot_commands(application):
+    """Set bot commands with descriptions for the command menu."""
+    commands = [
+        ("start", "Start the bot and get welcome message"),
+        ("help", "Show help and list of available commands"),
+        ("learn", "Teach me new information (format: /learn topic | info | source)"),
+        ("about", "Learn about SQR DAO"),
+        ("website", "Get SQR DAO's website"),
+        ("trading", "Learn about SQR DAO's trading approach"),
+        ("contact", "Get contact information"),
+        ("faq", "Frequently asked questions")
+    ]
+    await application.bot.set_my_commands(commands)
+
+async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /about command."""
+    knowledge = db.get_knowledge("sqrdao")
+    about_text = "About SQR DAO:\n\n"
+    if knowledge:
+        about_text += knowledge[0][0]
+    else:
+        about_text = "SQR DAO is a decentralized autonomous organization focused on quantitative trading and AI research."
+    await update.message.reply_text(about_text, parse_mode=ParseMode.HTML)
+
+async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /website command."""
+    knowledge = db.get_knowledge("website")
+    if knowledge:
+        website_text = knowledge[0][0]
+    else:
+        website_text = "Visit SQR DAO at https://sqrdao.com"
+    await update.message.reply_text(website_text, parse_mode=ParseMode.HTML)
+
+async def trading_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /trading command."""
+    knowledge = db.get_knowledge("trading")
+    if knowledge:
+        trading_text = knowledge[0][0]
+    else:
+        trading_text = "SQR DAO combines blockchain technology with AI for innovative trading strategies."
+    await update.message.reply_text(trading_text, parse_mode=ParseMode.HTML)
+
+async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /contact command."""
+    contact_text = """
+<b>Contact SQR DAO</b>
+
+You can reach us through:
+• Website: https://sqrdao.com
+• Email: contact@sqrdao.com
+• Twitter: @sqrdao
+"""
+    await update.message.reply_text(contact_text, parse_mode=ParseMode.HTML)
+
+async def faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /faq command."""
+    faq_text = """
+<b>Frequently Asked Questions</b>
+
+<b>Q: What is SQR DAO?</b>
+A: SQR DAO is a decentralized autonomous organization focused on quantitative trading and AI research.
+
+<b>Q: How can I get started?</b>
+A: Visit our website at https://sqrdao.com to learn more and join our platform.
+
+<b>Q: What makes SQR DAO unique?</b>
+A: We combine blockchain technology with artificial intelligence to create innovative trading strategies.
+"""
+    await update.message.reply_text(faq_text, parse_mode=ParseMode.HTML)
+
 def main():
     """Start the bot."""
     try:
@@ -453,7 +527,15 @@ def main():
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("learn", learn_command))
+        application.add_handler(CommandHandler("about", about_command))
+        application.add_handler(CommandHandler("website", website_command))
+        application.add_handler(CommandHandler("trading", trading_command))
+        application.add_handler(CommandHandler("contact", contact_command))
+        application.add_handler(CommandHandler("faq", faq_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+        # Set bot commands
+        application.job_queue.run_once(lambda ctx: set_bot_commands(application), 0)
 
         # Start the Bot
         logger.info("Starting bot...")
