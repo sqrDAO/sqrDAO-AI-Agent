@@ -30,8 +30,14 @@ logger = logging.getLogger(__name__)
 
 # List of authorized member handles (without @ symbol)
 AUTHORIZED_MEMBERS = [
-    "member1",
-    "member2",  # Add actual member handles here
+    "DarthCastelian",
+    "kevintran25", 
+    "kaitlyn2032",
+    "Farosdozz",
+    "ashleyngxxxn",
+    "tuongdoan",
+    "arandomuserlol",
+    "hanjasonn"        # Add actual member handles here
 ]
 
 def is_member(func):
@@ -258,7 +264,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_authorized = update.effective_user.username in AUTHORIZED_MEMBERS
     
     help_text = """
-<b>🤖 sqrDAO Bot Help</b>
+<b>🤖 sqrAgent Help</b>
 
 I'm your AI assistant! Here's what I can do:
 
