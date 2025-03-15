@@ -222,11 +222,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 <b>Hello!</b> I'm your AI assistant powered by Gemini. "
         "You can ask me anything, and I'll do my best to help you!\n\n"
         "I can:\n"
-        "• Answer your questions\n"
-        "• Search the web for information\n"
-        "• Read and analyze web pages\n"
-        "• Help with various tasks\n\n"
-        "Just send me a message or a URL to get started!"
+        "• Answer your questions about SQR DAO\n"
+        "• Provide information about our platform\n"
+        "• Help with trading-related queries\n"
+        "• Assist with general inquiries\n\n"
+        "Just send me a message or use /help to see available commands!"
     )
     await update.message.reply_text(welcome_message, parse_mode=ParseMode.HTML)
 
@@ -240,8 +240,6 @@ I'm your AI assistant! Here's what I can do:
 <b>Available Commands:</b>
 • /start - Start the bot and get welcome message
 • /help - Show this help message
-• /learn - Teach me new information
-  Format: /learn topic | information | source(optional)
 • /about - Learn about SQR DAO
 • /website - Get SQR DAO's website
 • /trading - Learn about our trading approach
@@ -250,44 +248,12 @@ I'm your AI assistant! Here's what I can do:
 
 <b>Features:</b>
 • I remember our conversations and use them for context
-• I can learn new information that you teach me
 • I provide detailed responses using my knowledge base
+• I can help you with information about SQR DAO
 
 Just send me a message or use any command to get started!
 """
     await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
-
-async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /learn command to store new knowledge."""
-    try:
-        # Expected format: /learn topic | information | source(optional)
-        args = ' '.join(context.args)
-        if not args or '|' not in args:
-            await update.message.reply_text(
-                "<i>Please use the format: /learn topic | information | source(optional)</i>",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        parts = [part.strip() for part in args.split('|')]
-        topic = parts[0]
-        information = parts[1]
-        source = parts[2] if len(parts) > 2 else None
-
-        # Store the knowledge
-        db.store_knowledge(topic, information, source)
-        
-        await update.message.reply_text(
-            f"<i>✅ I've learned new information about {topic}!</i>",
-            parse_mode=ParseMode.HTML
-        )
-
-    except Exception as e:
-        logger.error(f"Error in learn_command: {str(e)}")
-        await update.message.reply_text(
-            "<i>I encountered an error while learning. Please try again.</i>",
-            parse_mode=ParseMode.HTML
-        )
 
 class Database:
     def __init__(self):
@@ -440,15 +406,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
-def store_new_knowledge(topic, information, source=None):
-    db.store_knowledge(topic, information, source)
-
 async def set_bot_commands(application):
     """Set bot commands with descriptions for the command menu."""
     commands = [
         ("start", "Start the bot and get welcome message"),
         ("help", "Show help and list of available commands"),
-        ("learn", "Teach me new information (format: /learn topic | info | source)"),
         ("about", "Learn about SQR DAO"),
         ("website", "Get SQR DAO's website"),
         ("trading", "Learn about SQR DAO's trading approach"),
@@ -526,7 +488,6 @@ def main():
         # Add handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("learn", learn_command))
         application.add_handler(CommandHandler("about", about_command))
         application.add_handler(CommandHandler("website", website_command))
         application.add_handler(CommandHandler("trading", trading_command))
