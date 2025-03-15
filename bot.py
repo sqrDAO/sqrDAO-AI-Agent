@@ -241,10 +241,8 @@ I'm your AI assistant! Here's what I can do:
 • /start - Start the bot and get welcome message
 • /help - Show this help message
 • /about - Learn about sqrDAO
-• /website - Get sqrDAO's website
-• /contact - Get contact information
-• /faq - View frequently asked questions
 • /events - View sqrDAO events calendar
+• /contact - Get contact information
 
 <b>Features:</b>
 • I remember our conversations and use them for context
@@ -472,7 +470,7 @@ async def events_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 <b>sqrDAO Events Calendar</b>
 
 View and register for our upcoming events on Luma:
-• https://lu.ma/sqrdao
+• https://lu.ma/sqrdao-events
 
 Stay updated with our latest events, workshops, and community gatherings!
 """
@@ -494,7 +492,6 @@ def main():
         application.add_handler(CommandHandler("about", about_command))
         application.add_handler(CommandHandler("website", website_command))
         application.add_handler(CommandHandler("contact", contact_command))
-        application.add_handler(CommandHandler("faq", faq_command))
         application.add_handler(CommandHandler("events", events_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
