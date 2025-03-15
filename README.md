@@ -155,7 +155,29 @@ sudo systemctl start sqrdao-bot
 
 ## License
 
-This project is proprietary and confidential. © 2024 sqrFUND. All rights reserved.
+This project is open-source and available under the following terms:
+
+### Permitted Uses
+- ✅ Public, non-commercial use
+- ✅ Educational purposes
+- ✅ Research and development
+- ✅ Personal projects
+- ✅ Community building
+- ✅ Non-profit organizations
+
+### Restrictions
+- ❌ Commercial use without explicit permission
+- ❌ Token launches or cryptocurrency offerings
+- ❌ Financial products or services
+- ❌ Rebranding without attribution
+- ❌ Closed-source modifications
+
+### Attribution
+- Must maintain original copyright notices
+- Must credit sqrFUND as the original creator
+- Must link to the original repository
+
+Copyright © 2024 sqrFUND. For commercial licensing inquiries, please contact dev@sqrfund.ai.
 
 ## Support
 
