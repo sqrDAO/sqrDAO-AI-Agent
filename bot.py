@@ -15,6 +15,7 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import sqlite3
 from datetime import datetime
+import asyncio
 
 # Load environment variables
 load_dotenv()
@@ -471,8 +472,8 @@ def main():
         if not telegram_token:
             raise ValueError("TELEGRAM_BOT_TOKEN not found in environment variables")
             
-        # Create the Application and pass it your bot's token
-        application = Application.builder().token(telegram_token).build()
+        # Create the Application with job queue enabled
+        application = Application.builder().token(telegram_token).concurrent_updates(True).job_queue(True).build()
 
         # Add handlers
         application.add_handler(CommandHandler("start", start))
@@ -483,8 +484,8 @@ def main():
         application.add_handler(CommandHandler("faq", faq_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-        # Set bot commands
-        application.job_queue.run_once(lambda ctx: set_bot_commands(application), 0)
+        # Set bot commands directly
+        asyncio.run(set_bot_commands(application))
 
         # Start the Bot
         logger.info("Starting bot...")
