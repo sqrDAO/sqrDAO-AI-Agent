@@ -222,10 +222,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 <b>Hello!</b> I'm your AI assistant powered by Gemini. "
         "You can ask me anything, and I'll do my best to help you!\n\n"
         "I can:\n"
-        "• Answer your questions about SQR DAO\n"
+        "• Answer your questions about sqrDAO\n"
         "• Provide information about our platform\n"
-        "• Help with trading-related queries\n"
-        "• Assist with general inquiries\n\n"
+        "• Help with general inquiries\n"
+        "• Assist with platform-related questions\n\n"
         "Just send me a message or use /help to see available commands!"
     )
     await update.message.reply_text(welcome_message, parse_mode=ParseMode.HTML)
@@ -240,16 +240,15 @@ I'm your AI assistant! Here's what I can do:
 <b>Available Commands:</b>
 • /start - Start the bot and get welcome message
 • /help - Show this help message
-• /about - Learn about SQR DAO
-• /website - Get SQR DAO's website
-• /trading - Learn about our trading approach
+• /about - Learn about sqrDAO
+• /website - Get sqrDAO's website
 • /contact - Get contact information
 • /faq - View frequently asked questions
 
 <b>Features:</b>
 • I remember our conversations and use them for context
 • I provide detailed responses using my knowledge base
-• I can help you with information about SQR DAO
+• I can help you with information about sqrDAO
 
 Just send me a message or use any command to get started!
 """
@@ -411,9 +410,8 @@ async def set_bot_commands(application):
     commands = [
         ("start", "Start the bot and get welcome message"),
         ("help", "Show help and list of available commands"),
-        ("about", "Learn about SQR DAO"),
-        ("website", "Get SQR DAO's website"),
-        ("trading", "Learn about SQR DAO's trading approach"),
+        ("about", "Learn about sqrDAO"),
+        ("website", "Get sqrDAO's website"),
         ("contact", "Get contact information"),
         ("faq", "Frequently asked questions")
     ]
@@ -422,11 +420,11 @@ async def set_bot_commands(application):
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /about command."""
     knowledge = db.get_knowledge("sqrdao")
-    about_text = "About SQR DAO:\n\n"
+    about_text = "About sqrDAO:\n\n"
     if knowledge:
         about_text += knowledge[0][0]
     else:
-        about_text = "SQR DAO is a decentralized autonomous organization focused on quantitative trading and AI research."
+        about_text = "sqrDAO is a decentralized autonomous organization focused on innovative blockchain solutions and research."
     await update.message.reply_text(about_text, parse_mode=ParseMode.HTML)
 
 async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -435,22 +433,13 @@ async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if knowledge:
         website_text = knowledge[0][0]
     else:
-        website_text = "Visit SQR DAO at https://sqrdao.com"
+        website_text = "Visit sqrDAO at https://sqrdao.com"
     await update.message.reply_text(website_text, parse_mode=ParseMode.HTML)
-
-async def trading_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /trading command."""
-    knowledge = db.get_knowledge("trading")
-    if knowledge:
-        trading_text = knowledge[0][0]
-    else:
-        trading_text = "SQR DAO combines blockchain technology with AI for innovative trading strategies."
-    await update.message.reply_text(trading_text, parse_mode=ParseMode.HTML)
 
 async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /contact command."""
     contact_text = """
-<b>Contact SQR DAO</b>
+<b>Contact sqrDAO</b>
 
 You can reach us through:
 • Website: https://sqrdao.com
@@ -464,14 +453,14 @@ async def faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     faq_text = """
 <b>Frequently Asked Questions</b>
 
-<b>Q: What is SQR DAO?</b>
-A: SQR DAO is a decentralized autonomous organization focused on quantitative trading and AI research.
+<b>Q: What is sqrDAO?</b>
+A: sqrDAO is a decentralized autonomous organization focused on innovative blockchain solutions and research.
 
 <b>Q: How can I get started?</b>
 A: Visit our website at https://sqrdao.com to learn more and join our platform.
 
-<b>Q: What makes SQR DAO unique?</b>
-A: We combine blockchain technology with artificial intelligence to create innovative trading strategies.
+<b>Q: What makes sqrDAO unique?</b>
+A: We combine cutting-edge blockchain technology with innovative solutions to create value for our community.
 """
     await update.message.reply_text(faq_text, parse_mode=ParseMode.HTML)
 
@@ -490,7 +479,6 @@ def main():
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("about", about_command))
         application.add_handler(CommandHandler("website", website_command))
-        application.add_handler(CommandHandler("trading", trading_command))
         application.add_handler(CommandHandler("contact", contact_command))
         application.add_handler(CommandHandler("faq", faq_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
