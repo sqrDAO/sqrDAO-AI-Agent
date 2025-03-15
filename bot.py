@@ -244,6 +244,7 @@ I'm your AI assistant! Here's what I can do:
 • /website - Get sqrDAO's website
 • /contact - Get contact information
 • /faq - View frequently asked questions
+• /events - View sqrDAO events calendar
 
 <b>Features:</b>
 • I remember our conversations and use them for context
@@ -413,7 +414,8 @@ async def set_bot_commands(application):
         ("about", "Learn about sqrDAO"),
         ("website", "Get sqrDAO's website"),
         ("contact", "Get contact information"),
-        ("faq", "Frequently asked questions")
+        ("faq", "Frequently asked questions"),
+        ("events", "View sqrDAO events")
     ]
     await application.bot.set_my_commands(commands)
 
@@ -443,7 +445,7 @@ async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 You can reach us through:
 • Website: https://sqrdao.com
-• Email: contact@sqrdao.com
+• Email: gm@sqrdao.com
 • Twitter: @sqrdao
 """
     await update.message.reply_text(contact_text, parse_mode=ParseMode.HTML)
@@ -464,6 +466,18 @@ A: We combine cutting-edge blockchain technology with innovative solutions to cr
 """
     await update.message.reply_text(faq_text, parse_mode=ParseMode.HTML)
 
+async def events_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /events command."""
+    events_text = """
+<b>sqrDAO Events Calendar</b>
+
+View and register for our upcoming events on Luma:
+• https://lu.ma/sqrdao
+
+Stay updated with our latest events, workshops, and community gatherings!
+"""
+    await update.message.reply_text(events_text, parse_mode=ParseMode.HTML)
+
 def main():
     """Start the bot."""
     try:
@@ -481,6 +495,7 @@ def main():
         application.add_handler(CommandHandler("website", website_command))
         application.add_handler(CommandHandler("contact", contact_command))
         application.add_handler(CommandHandler("faq", faq_command))
+        application.add_handler(CommandHandler("events", events_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # Start the Bot
