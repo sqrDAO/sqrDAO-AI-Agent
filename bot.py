@@ -554,22 +554,35 @@ For access issues, please contact the team.
 async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /learn command - Member only."""
     message = update.message.text.strip()
-    args = message.split(None, 2)  # Split into max 3 parts
     
-    if len(args) < 3:
+    # Check if the message starts with quotes for the topic
+    if not (message.count('"') >= 2 and message.find('"') < message.find('"', message.find('"') + 1)):
         usage_text = """
-<b>Usage:</b> /learn [topic] [information]
+<b>Usage:</b> /learn "topic" [information]
 
-Example:
-/learn website Our new website is live at https://sqrdao.com
+Examples:
+/learn "website" Our new website is live at https://sqrdao.com
+/learn "aws credits" Get $10K AWS credits with org ID 3Ehcy
 
-This will store the information in the knowledge base for the given topic.
+The topic must be in quotes. This will store the information in the knowledge base.
 """
         await update.message.reply_text(usage_text, parse_mode=ParseMode.HTML)
         return
     
-    topic = args[1]
-    information = args[2]
+    # Extract topic (text between first pair of quotes)
+    first_quote = message.find('"')
+    second_quote = message.find('"', first_quote + 1)
+    topic = message[first_quote + 1:second_quote].strip()
+    
+    # Extract information (everything after the second quote)
+    information = message[second_quote + 1:].strip()
+    
+    if not topic or not information:
+        await update.message.reply_text(
+            "❌ Please provide both a topic (in quotes) and information.",
+            parse_mode=ParseMode.HTML
+        )
+        return
     
     try:
         db.store_knowledge(topic, information)
