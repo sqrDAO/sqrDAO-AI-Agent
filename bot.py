@@ -472,8 +472,8 @@ def main():
         if not telegram_token:
             raise ValueError("TELEGRAM_BOT_TOKEN not found in environment variables")
             
-        # Create the Application with job queue enabled
-        application = Application.builder().token(telegram_token).concurrent_updates(True).job_queue(True).build()
+        # Create the Application with concurrent updates
+        application = Application.builder().token(telegram_token).concurrent_updates(True).build()
 
         # Add handlers
         application.add_handler(CommandHandler("start", start))
@@ -484,11 +484,9 @@ def main():
         application.add_handler(CommandHandler("faq", faq_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-        # Set bot commands directly
-        asyncio.run(set_bot_commands(application))
-
         # Start the Bot
         logger.info("Starting bot...")
+        application.post_init = set_bot_commands
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
