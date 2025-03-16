@@ -147,7 +147,7 @@ load_members_from_knowledge()
 PENDING_REQUESTS = {}
 
 def is_member(func):
-    """Decorator to check if user is an authorized member."""
+    """Check if user is an authorized member."""
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
@@ -156,13 +156,13 @@ def is_member(func):
         else:
             await update.message.reply_text(
                 "⚠️ This command is only available to sqrDAO authorized members.\n"
-                "Please contact us if you're a member and need access.",
+                "Please use /request_member command to request membership.",
                 parse_mode=ParseMode.HTML
             )
     return wrapper
 
 def is_any_member(func):
-    """Decorator to check if user is either an authorized member or regular member."""
+    """Check if user is either an authorized member or regular member."""
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
@@ -171,7 +171,7 @@ def is_any_member(func):
         else:
             await update.message.reply_text(
                 "⚠️ This command is only available to sqrDAO members.\n"
-                "Please contact us if you're a member and need access.",
+                "Please use /request_member command to request membership.",
                 parse_mode=ParseMode.HTML
             )
     return wrapper
