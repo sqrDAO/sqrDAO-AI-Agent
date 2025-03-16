@@ -27,7 +27,7 @@ load_dotenv()
 # Configure logging with more detail
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
@@ -454,9 +454,6 @@ def format_response_for_telegram(text):
     
     result = '\n'.join(chunks)
     
-    # Add debug logging
-    logger.debug(f"Formatted text before sending: {result}")
-    
     return result
 
 def extract_urls(text):
@@ -617,8 +614,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
         
-    logger.debug(f"Received message: {user_message}")
-    
     # Check if the message is a command
     if user_message.startswith('/'):
         await update.message.reply_text(
@@ -662,7 +657,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Format and send response with HTML formatting
         formatted_text = format_response_for_telegram(response)
-        logger.debug(f"Formatted text: {formatted_text}")  # Add debug logging
         
         await update.message.reply_text(
             formatted_text,
