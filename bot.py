@@ -1006,6 +1006,42 @@ async def bulk_learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "Supported formats: CSV, SSV, TSV, PSV"
         )
 
+@is_member
+async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /learn_from_url command - Learn from a web page."""
+    if not context.args or len(context.args) < 1:
+        await update.message.reply_text(
+            "❌ Please provide a URL to learn from.\nUsage: /learn_from_url <url>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    url = context.args[0]
+    
+    # Fetch the content from the URL
+    content = get_webpage_content(url)
+    
+    if content:
+        # Store the content in the knowledge base
+        topic = url  # You can customize the topic as needed
+        try:
+            db.store_knowledge(topic, content)
+            await update.message.reply_text(
+                f"✅ Successfully learned from the URL: {url}",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            logger.error(f"Error storing knowledge from URL: {str(e)}")
+            await update.message.reply_text(
+                "❌ Failed to store information. Please try again.",
+                parse_mode=ParseMode.HTML
+            )
+    else:
+        await update.message.reply_text(
+            "❌ Failed to fetch content from the provided URL. Please check the URL and try again.",
+            parse_mode=ParseMode.HTML
+        )
+
 def main():
     """Start the bot."""
     try:
@@ -1030,6 +1066,7 @@ def main():
         application.add_handler(CommandHandler("approve_member", approve_member))
         application.add_handler(CommandHandler("reject_member", reject_member))
         application.add_handler(CommandHandler("list_requests", list_requests))
+        application.add_handler(CommandHandler("learn_from_url", learn_from_url))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # Start the Bot
