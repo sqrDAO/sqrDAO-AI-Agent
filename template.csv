@@ -1,0 +1,19 @@
+topic,information
+# Example entries for sqrDAO knowledge base
+# Format: topic,information
+# Rules:
+# - Topics must be 255 characters or less
+# - Information must be 5000 characters or less
+# - Both fields are required
+# - Empty rows will be skipped
+# - You can use any of these delimiters: comma (,), semicolon (;), tab, or pipe (|)
+
+aws credits,Get $10K AWS credits using our organization ID: 3Ehcy. Follow the guide at https://drive.google.com/file/d/12DjM2P5x0T_koLI6o_UMXMo_LUJpYrXL/view?usp=sharing
+
+legal services,Access 20% discount on legal services through our partnership with Outlaw. Visit https://teamoutlaw.io/ and use our special member code.
+
+github repository,Access our GitHub repository at https://github.com/sqrdao for development resources and documentation.
+
+brand kit,Download our brand assets and guidelines from the SqrDAO Brand Kit: https://sqrdao.notion.site/sqrdao-brand-kit
+
+events calendar,Stay updated with our events on Luma: https://lu.ma/sqrdao-events 

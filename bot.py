@@ -294,6 +294,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /about - Learn about sqrDAO
 • /events - View sqrDAO events calendar
 • /contact - Get contact information
+• /resources - Access internal resources (members only)
 """
 
     if is_authorized or is_regular_member:
@@ -643,6 +644,29 @@ The topic must be in quotes. This will store the information in the knowledge ba
 async def bulk_learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /bulk_learn command - Bulk add information from CSV file."""
     if not update.message.document:
+        # Check if user wants the template
+        if update.message.text and "template" in update.message.text.lower():
+            try:
+                with open('template.csv', 'rb') as template_file:
+                    await update.message.reply_document(
+                        document=template_file,
+                        filename='sqrdao_knowledge_template.csv',
+                        caption="📝 Here's a template CSV file for bulk learning.\n\n"
+                               "The file includes:\n"
+                               "• Example entries\n"
+                               "• Format rules\n"
+                               "• Character limits\n"
+                               "• Supported delimiters\n\n"
+                               "Fill in your entries and send the file back to me!"
+                    )
+                return
+            except Exception as e:
+                logger.error(f"Error sending template: {str(e)}")
+                await update.message.reply_text(
+                    "❌ Sorry, I couldn't send the template file. Please try again later."
+                )
+                return
+        
         await update.message.reply_text(
             "Please send a CSV file with the following format:\n"
             "topic,information\n"
@@ -654,7 +678,8 @@ async def bulk_learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "• Semicolon-separated (SSV)\n"
             "• Tab-separated (TSV)\n"
             "• Pipe-separated (PSV)\n\n"
-            "The file should have a header row with 'topic' and 'information' columns."
+            "The file should have a header row with 'topic' and 'information' columns.\n\n"
+            "Type 'template' to get a template file with examples."
         )
         return
 
