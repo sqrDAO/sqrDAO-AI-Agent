@@ -679,7 +679,9 @@ async def set_bot_commands(application):
         ("about", "Learn about sqrDAO"),
         ("website", "Get sqrDAO's website"),
         ("contact", "Get contact information"),
-        ("events", "View sqrDAO events")
+        ("events", "View sqrDAO events"),
+        ("resources", "Access internal resources (members only)"),
+        ("request_member", "Request to become a member")
     ]
     
     # Commands for regular members
@@ -690,7 +692,10 @@ async def set_bot_commands(application):
     # Additional commands for authorized members
     authorized_commands = member_commands + [
         ("learn", "Add information to knowledge base"),
-        ("bulk_learn", "Add multiple entries from CSV file")
+        ("bulk_learn", "Add multiple entries from CSV file"),
+        ("approve_member", "Approve a member request"),
+        ("reject_member", "Reject a member request"),
+        ("list_requests", "View pending member requests")
     ]
     
     # Set basic commands for all users
@@ -741,28 +746,11 @@ async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 <b>Contact Information</b>
 
 Get in touch with us:
-• Email: dev@sqrfund.ai
-• X (Twitter): @sqrfund
-• Telegram: @sqrfund_ai
-• Website: https://sqrfund.ai
+• Email: gm@sqrdao.com
+• X (Twitter): @sqrdao
+• Website: https://sqrdao.com
 """
     await update.message.reply_text(contact_text, parse_mode=ParseMode.HTML)
-
-async def faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /faq command."""
-    faq_text = """
-<b>Frequently Asked Questions</b>
-
-<b>Q: What is sqrDAO?</b>
-A: sqrDAO is a decentralized autonomous organization focused on innovative blockchain solutions and research.
-
-<b>Q: How can I get started?</b>
-A: Visit our website at https://sqrdao.com to learn more and join our platform.
-
-<b>Q: What makes sqrDAO unique?</b>
-A: We combine cutting-edge blockchain technology with innovative solutions to create value for our community.
-"""
-    await update.message.reply_text(faq_text, parse_mode=ParseMode.HTML)
 
 async def events_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /events command."""
@@ -795,7 +783,7 @@ For access issues, please contact the team.
 
 @is_any_member
 async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /learn command - Available to all members."""
+    """Handle /learn command - Available to authorized members only."""
     message = update.message.text.strip()
     
     # Check if the message starts with quotes for the topic
@@ -805,7 +793,6 @@ async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Examples:
 /learn "website" Our new website is live at https://sqrdao.com
-/learn "aws credits" Get $10K AWS credits with org ID 3Ehcy
 
 The topic must be in quotes. This will store the information in the knowledge base.
 """
