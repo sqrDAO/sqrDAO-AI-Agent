@@ -567,6 +567,7 @@ Authorized members have access to:
         help_text += """
 <b>Authorized Member Commands:</b>
 • /learn - Add information to the bot's knowledge base
+• /learn_from_url <url> - Learn from a web page by providing a URL
 • /bulk_learn - Add multiple entries from CSV file
 • /approve_member - Approve a member request
 • /reject_member - Reject a member request
