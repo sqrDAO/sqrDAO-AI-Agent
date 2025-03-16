@@ -648,7 +648,13 @@ async def bulk_learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "topic,information\n"
             "Example:\n"
             "aws credits,Information about AWS credits\n"
-            "legal services,Information about legal services"
+            "legal services,Information about legal services\n\n"
+            "Supported formats:\n"
+            "• Standard CSV (comma-separated)\n"
+            "• Semicolon-separated (SSV)\n"
+            "• Tab-separated (TSV)\n"
+            "• Pipe-separated (PSV)\n\n"
+            "The file should have a header row with 'topic' and 'information' columns."
         )
         return
 
@@ -657,45 +663,113 @@ async def bulk_learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         file = await context.bot.get_file(update.message.document.file_id)
         file_content = await file.download_as_bytearray()
         
-        # Parse CSV content
-        csv_text = file_content.decode('utf-8')
-        csv_reader = csv.reader(io.StringIO(csv_text))
+        # Detect file encoding
+        try:
+            # Try UTF-8 first
+            csv_text = file_content.decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                # Try UTF-8 with BOM
+                csv_text = file_content.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                # Fallback to latin-1
+                csv_text = file_content.decode('latin-1')
         
-        # Skip header if exists
-        next(csv_reader, None)
+        # Detect delimiter
+        first_line = csv_text.split('\n')[0]
+        delimiters = [',', ';', '\t', '|']
+        delimiter = max(delimiters, key=lambda d: first_line.count(d))
+        
+        # Parse CSV content with detected delimiter
+        csv_reader = csv.reader(io.StringIO(csv_text), delimiter=delimiter)
+        
+        # Get header row
+        header = next(csv_reader, None)
+        if not header:
+            raise ValueError("File is empty")
+        
+        # Validate header
+        header = [col.strip().lower() for col in header]
+        required_columns = ['topic', 'information']
+        missing_columns = [col for col in required_columns if col not in header]
+        
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
+        
+        # Get column indices
+        topic_idx = header.index('topic')
+        info_idx = header.index('information')
         
         # Process each row
         success_count = 0
         error_count = 0
         error_messages = []
+        skipped_rows = 0
         
-        for row in csv_reader:
-            if len(row) >= 2:
-                topic = row[0].strip()
-                information = row[1].strip()
+        for row_num, row in enumerate(csv_reader, start=2):
+            # Skip empty rows
+            if not any(cell.strip() for cell in row):
+                skipped_rows += 1
+                continue
                 
-                if topic and information:
-                    try:
-                        # Store in database
-                        db.store_knowledge(topic, information)
-                        success_count += 1
-                    except Exception as e:
-                        error_count += 1
-                        error_messages.append(f"Error processing row '{topic}': {str(e)}")
+            # Validate row length
+            if len(row) < max(topic_idx, info_idx) + 1:
+                error_count += 1
+                error_messages.append(f"Row {row_num}: Insufficient columns")
+                continue
+            
+            # Extract and validate data
+            topic = row[topic_idx].strip()
+            information = row[info_idx].strip()
+            
+            # Validate content
+            if not topic:
+                error_count += 1
+                error_messages.append(f"Row {row_num}: Empty topic")
+                continue
+                
+            if not information:
+                error_count += 1
+                error_messages.append(f"Row {row_num}: Empty information")
+                continue
+            
+            # Validate length limits
+            if len(topic) > 255:
+                error_count += 1
+                error_messages.append(f"Row {row_num}: Topic too long (max 255 characters)")
+                continue
+                
+            if len(information) > 5000:
+                error_count += 1
+                error_messages.append(f"Row {row_num}: Information too long (max 5000 characters)")
+                continue
+            
+            try:
+                # Store in database
+                db.store_knowledge(topic, information)
+                success_count += 1
+            except Exception as e:
+                error_count += 1
+                error_messages.append(f"Row {row_num} '{topic}': {str(e)}")
         
         # Prepare response
         response = f"✅ Successfully processed {success_count} entries"
+        if skipped_rows > 0:
+            response += f"\n⏭️ Skipped {skipped_rows} empty rows"
         if error_count > 0:
             response += f"\n❌ Failed to process {error_count} entries"
             if error_messages:
-                response += "\n\nErrors:\n" + "\n".join(error_messages)
+                response += "\n\nErrors:\n" + "\n".join(error_messages[:5])  # Show first 5 errors
+                if len(error_messages) > 5:
+                    response += f"\n... and {len(error_messages) - 5} more errors"
         
         await update.message.reply_text(response)
         
     except Exception as e:
         await update.message.reply_text(
             f"❌ Error processing file: {str(e)}\n"
-            "Please make sure the file is a valid CSV with 'topic' and 'information' columns."
+            "Please make sure the file is a valid CSV with 'topic' and 'information' columns.\n"
+            "Supported formats: CSV, SSV, TSV, PSV"
         )
 
 def main():
