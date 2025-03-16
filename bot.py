@@ -444,6 +444,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
         return
+    
+    # Check if this is a template request
+    if user_message.lower().strip() == "template":
+        try:
+            with open('template.csv', 'rb') as template_file:
+                await update.message.reply_document(
+                    document=template_file,
+                    filename='sqrdao_knowledge_template.csv',
+                    caption="📝 Here's a template CSV file for bulk learning.\n\n"
+                           "The file includes:\n"
+                           "• Example entries\n"
+                           "• Format rules\n"
+                           "• Character limits\n"
+                           "• Supported delimiters\n\n"
+                           "Fill in your entries and send the file back to me!"
+                )
+            return
+        except Exception as e:
+            logger.error(f"Error sending template: {str(e)}")
+            await update.message.reply_text(
+                "❌ Sorry, I couldn't send the template file. Please try again later."
+            )
+            return
         
     try:
         # Get relevant context from previous conversations
