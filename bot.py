@@ -76,6 +76,36 @@ load_members_from_knowledge()
 # Store pending member requests
 PENDING_REQUESTS = {}
 
+def is_member(func):
+    """Decorator to check if user is an authorized member."""
+    @functools.wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        if user.username and user.username in AUTHORIZED_MEMBERS:
+            return await func(update, context)
+        else:
+            await update.message.reply_text(
+                "⚠️ This command is only available to sqrDAO authorized members.\n"
+                "Please contact us if you're a member and need access.",
+                parse_mode=ParseMode.HTML
+            )
+    return wrapper
+
+def is_any_member(func):
+    """Decorator to check if user is either an authorized member or regular member."""
+    @functools.wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        if user.username and (user.username in AUTHORIZED_MEMBERS or user.username in MEMBERS):
+            return await func(update, context)
+        else:
+            await update.message.reply_text(
+                "⚠️ This command is only available to sqrDAO members.\n"
+                "Please contact us if you're a member and need access.",
+                parse_mode=ParseMode.HTML
+            )
+    return wrapper
+
 async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /request_member command - Request to be added as a member."""
     user = update.effective_user
@@ -219,36 +249,6 @@ async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
         requests_text += f"• @{username} (Requested: {request['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})\n"
     
     await update.message.reply_text(requests_text, parse_mode=ParseMode.HTML)
-
-def is_member(func):
-    """Decorator to check if user is an authorized member."""
-    @functools.wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = update.effective_user
-        if user.username and user.username in AUTHORIZED_MEMBERS:
-            return await func(update, context)
-        else:
-            await update.message.reply_text(
-                "⚠️ This command is only available to sqrDAO authorized members.\n"
-                "Please contact us if you're a member and need access.",
-                parse_mode=ParseMode.HTML
-            )
-    return wrapper
-
-def is_any_member(func):
-    """Decorator to check if user is either an authorized member or regular member."""
-    @functools.wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = update.effective_user
-        if user.username and (user.username in AUTHORIZED_MEMBERS or user.username in MEMBERS):
-            return await func(update, context)
-        else:
-            await update.message.reply_text(
-                "⚠️ This command is only available to sqrDAO members.\n"
-                "Please contact us if you're a member and need access.",
-                parse_mode=ParseMode.HTML
-            )
-    return wrapper
 
 # Configure API keys
 api_key = os.getenv('GEMINI_API_KEY')
