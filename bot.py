@@ -537,7 +537,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /about - Learn about sqrDAO
 • /events - View sqrDAO events calendar
 • /contact - Get contact information
-• /resources - Access internal resources
+• /resources - Access internal resources (members only)
 • /request_member - Request to become a member
 """
 
