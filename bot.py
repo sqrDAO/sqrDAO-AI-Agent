@@ -36,36 +36,40 @@ AUTHORIZED_MEMBERS = []
 MEMBERS = []
 
 def load_members_from_knowledge():
-    """Load authorized members and regular members from the knowledge base."""
+    """Load regular members from the knowledge base and authorized members from config.json."""
     global AUTHORIZED_MEMBERS, MEMBERS
     try:
-        # Load authorized members
-        authorized_members = db.get_knowledge("authorized_members")
-        if authorized_members:
-            AUTHORIZED_MEMBERS = json.loads(authorized_members[0][0])
+        # Load authorized members from config.json
+        try:
+            with open('config.json', 'r') as f:
+                config = json.load(f)
+                AUTHORIZED_MEMBERS = config.get('authorized_members', [])
+                logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members from config.json")
+        except Exception as e:
+            logger.error(f"Error loading authorized members from config.json: {str(e)}")
+            logger.error("Falling back to empty authorized members list")
+            AUTHORIZED_MEMBERS = []
         
-        # Load regular members
+        # Load regular members from knowledge base
         regular_members = db.get_knowledge("members")
         if regular_members:
             MEMBERS = json.loads(regular_members[0][0])
+            logger.info(f"Loaded {len(MEMBERS)} regular members from knowledge base")
+        else:
+            MEMBERS = []
             
-        logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members and {len(MEMBERS)} regular members")
     except Exception as e:
-        logger.error(f"Error loading members from knowledge base: {str(e)}")
+        logger.error(f"Error loading members: {str(e)}")
         logger.error("Falling back to empty members lists")
         AUTHORIZED_MEMBERS = []
         MEMBERS = []
 
 def save_members_to_knowledge():
-    """Save current members lists to the knowledge base."""
+    """Save regular members to the knowledge base."""
     try:
-        # Save authorized members
-        db.store_knowledge("authorized_members", json.dumps(AUTHORIZED_MEMBERS))
-        
-        # Save regular members
+        # Save regular members only
         db.store_knowledge("members", json.dumps(MEMBERS))
-        
-        logger.info("Successfully saved members to knowledge base")
+        logger.info("Successfully saved regular members to knowledge base")
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
