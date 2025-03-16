@@ -35,12 +35,12 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 Members have access to:
 - All public commands
 - `/resources` - Access internal resources and documentation
-- `/learn` - Add information to the bot's knowledge base
-- `/bulk_learn` - Add multiple entries from CSV file
 
 ### Authorized Member Commands
 Authorized members have access to:
 - All public and member commands
+- `/learn` - Add information to the bot's knowledge base
+- `/bulk_learn` - Add multiple entries from CSV file
 - `/approve_member` - Approve a member request
 - `/reject_member` - Reject a member request
 - `/list_requests` - View pending member requests
@@ -90,8 +90,8 @@ python bot.py
 
 ### Member Management
 - Two-tier access system:
-  - Regular members: Access to resources and knowledge base
-  - Authorized members: Full access including member approval
+  - Regular members: Access to resources
+  - Authorized members: Full access including knowledge base management and member approval
 - Member request system with approval workflow
 - Username-based verification
 - Members stored in knowledge base
