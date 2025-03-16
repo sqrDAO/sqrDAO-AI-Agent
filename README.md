@@ -41,6 +41,7 @@ Authorized members have access to:
 - All public and member commands
 - `/learn` - Add information to the bot's knowledge base
 - `/bulk_learn` - Add multiple entries from CSV file
+- `/learn_from_url <url>` - Learn from a web page by providing a URL
 - `/approve_member` - Approve a member request
 - `/reject_member` - Reject a member request
 - `/list_requests` - View pending member requests
