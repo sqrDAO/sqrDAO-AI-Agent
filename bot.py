@@ -17,6 +17,9 @@ import sqlite3
 from datetime import datetime
 import functools
 import telegram
+import csv
+import io
+from typing import List, Tuple
 
 # Load environment variables
 load_dotenv()
@@ -291,7 +294,6 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /about - Learn about sqrDAO
 • /events - View sqrDAO events calendar
 • /contact - Get contact information
-• /resources - Access internal resources (members only)
 """
 
     if is_authorized or is_regular_member:
@@ -304,6 +306,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
         help_text += """
 <b>Authorized Member Commands:</b>
 • /learn - Add information to knowledge base
+• /bulk_learn - Add multiple entries from CSV file
 """
 
     help_text += """
@@ -486,7 +489,8 @@ async def set_bot_commands(application):
     
     # Additional commands for authorized members
     authorized_commands = member_commands + [
-        ("learn", "Add information to knowledge base")
+        ("learn", "Add information to knowledge base"),
+        ("bulk_learn", "Add multiple entries from CSV file")
     ]
     
     # Set basic commands for all users
@@ -636,6 +640,64 @@ The topic must be in quotes. This will store the information in the knowledge ba
             parse_mode=ParseMode.HTML
         )
 
+async def bulk_learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /bulk_learn command - Bulk add information from CSV file."""
+    if not update.message.document:
+        await update.message.reply_text(
+            "Please send a CSV file with the following format:\n"
+            "topic,information\n"
+            "Example:\n"
+            "aws credits,Information about AWS credits\n"
+            "legal services,Information about legal services"
+        )
+        return
+
+    try:
+        # Get the file
+        file = await context.bot.get_file(update.message.document.file_id)
+        file_content = await file.download_as_bytearray()
+        
+        # Parse CSV content
+        csv_text = file_content.decode('utf-8')
+        csv_reader = csv.reader(io.StringIO(csv_text))
+        
+        # Skip header if exists
+        next(csv_reader, None)
+        
+        # Process each row
+        success_count = 0
+        error_count = 0
+        error_messages = []
+        
+        for row in csv_reader:
+            if len(row) >= 2:
+                topic = row[0].strip()
+                information = row[1].strip()
+                
+                if topic and information:
+                    try:
+                        # Store in database
+                        db.store_knowledge(topic, information)
+                        success_count += 1
+                    except Exception as e:
+                        error_count += 1
+                        error_messages.append(f"Error processing row '{topic}': {str(e)}")
+        
+        # Prepare response
+        response = f"✅ Successfully processed {success_count} entries"
+        if error_count > 0:
+            response += f"\n❌ Failed to process {error_count} entries"
+            if error_messages:
+                response += "\n\nErrors:\n" + "\n".join(error_messages)
+        
+        await update.message.reply_text(response)
+        
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Error processing file: {str(e)}\n"
+            "Please make sure the file is a valid CSV with 'topic' and 'information' columns."
+        )
+
 def main():
     """Start the bot."""
     try:
@@ -655,6 +717,7 @@ def main():
         application.add_handler(CommandHandler("events", events_command))
         application.add_handler(CommandHandler("resources", resources_command))
         application.add_handler(CommandHandler("learn", learn_command))
+        application.add_handler(CommandHandler("bulk_learn", bulk_learn_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # Start the Bot
