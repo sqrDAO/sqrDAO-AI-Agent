@@ -6,7 +6,6 @@ import json
 from urllib.parse import urlparse
 import requests
 import trafilatura
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import google.generativeai as genai
 from googleapiclient.discovery import build
