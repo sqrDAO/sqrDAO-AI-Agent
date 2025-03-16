@@ -28,6 +28,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - `/website` - Get sqrDAO's website
 - `/contact` - Get contact information
 - `/events` - View sqrDAO events calendar
+- `/resources` - Access internal resources (members only)
 - `/request_member` - Request to become a member
 
 ### Member Commands
