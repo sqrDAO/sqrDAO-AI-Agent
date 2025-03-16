@@ -607,13 +607,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     chat_id = update.message.chat_id
     
-    if not user_message:
-        await update.message.reply_text(
-            "<i>I couldn't process an empty message. Please send some text.</i>",
-            parse_mode=ParseMode.HTML
-        )
-        return
-        
     # Check if the message is a command
     if user_message.startswith('/'):
         await update.message.reply_text(
@@ -621,7 +614,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
         return
-    
+
+    # Check if the message mentions the bot
+    if context.bot.username in user_message:
+        # Process the message as a normal user message
+        user_message = user_message.replace(f"@{context.bot.username}", "").strip()
+        
+        if not user_message:
+            await update.message.reply_text(
+                "<i>I couldn't process an empty message. Please send some text.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Get relevant context from previous conversations
+        relevant_context = db.get_relevant_context(update.effective_user.id, user_message)
+        
+        # Process the message with context
+        response = process_message_with_context(user_message, relevant_context)
+        
+        # Store the conversation
+        db.store_conversation(update.effective_user.id, user_message, response)
+        
+        # Format and send response with HTML formatting
+        formatted_text = format_response_for_telegram(response)
+        
+        await update.message.reply_text(
+            formatted_text,
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     # Check if this is a template request
     if user_message.lower().strip() == "template":
         try:
