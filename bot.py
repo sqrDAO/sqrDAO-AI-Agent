@@ -471,7 +471,8 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /about - Learn about sqrDAO
 • /events - View sqrDAO events calendar
 • /contact - Get contact information
-• /request_member - Request to become a member
+• /request - Request to become a member
+• /request_member - Request to become a member (alternative command)
 """
 
     if is_authorized or is_regular_member:
@@ -1020,6 +1021,7 @@ def main():
         application.add_handler(CommandHandler("resources", resources_command))
         application.add_handler(CommandHandler("learn", learn_command))
         application.add_handler(CommandHandler("bulk_learn", bulk_learn_command))
+        application.add_handler(CommandHandler("request", request_member))
         application.add_handler(CommandHandler("request_member", request_member))
         application.add_handler(CommandHandler("approve_member", approve_member))
         application.add_handler(CommandHandler("reject_member", reject_member))
