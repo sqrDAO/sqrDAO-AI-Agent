@@ -16,6 +16,8 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - 📚 Knowledge base management
 - 🌐 Web search capabilities
 - 🧠 Conversation memory
+- 📝 Bulk learning from CSV files
+- 👥 Member request system
 
 ## Commands
 
@@ -26,23 +28,27 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - `/website` - Get sqrDAO's website
 - `/contact` - Get contact information
 - `/events` - View sqrDAO events calendar
-- `/resources` - Access internal resources (members only)
+- `/request_member` - Request to become a member
 
 ### Member Commands
 Members have access to:
 - All public commands
 - `/resources` - Access internal resources and documentation
+- `/learn` - Add information to the bot's knowledge base
+- `/bulk_learn` - Add multiple entries from CSV file
 
 ### Authorized Member Commands
 Authorized members have access to:
 - All public and member commands
-- `/learn` - Add information to the bot's knowledge base
+- `/approve_member` - Approve a member request
+- `/reject_member` - Reject a member request
+- `/list_requests` - View pending member requests
 
 ## Setup
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/sqrdao-intern/sqrDAO-AI-Agent.git
+git clone https://github.com/sqrdao/sqrDAO-AI-Agent.git
 cd sqrDAO-AI-Agent
 ```
 
@@ -61,21 +67,7 @@ GOOGLE_API_KEY=your_google_api_key
 GOOGLE_CSE_ID=your_google_cse_id
 ```
 
-4. Configure member access in `config.json`:
-```json
-{
-    "authorized_members": [
-        "username1",
-        "username2"
-    ],
-    "members": [
-        "member1",
-        "member2"
-    ]
-}
-```
-
-5. Run the bot:
+4. Run the bot:
 ```bash
 python bot.py
 ```
@@ -91,15 +83,17 @@ python bot.py
 ### Knowledge Base
 - SQLite database for storing information
 - Topic-based knowledge storage
-- Accessible through the `/learn` command (authorized members only)
+- Accessible through `/learn` and `/bulk_learn` commands
+- CSV template for bulk learning
 - Used to enhance bot responses
 
-### Member Access Control
+### Member Management
 - Two-tier access system:
-  - Regular members: Access to resources
-  - Authorized members: Full access including knowledge base management
+  - Regular members: Access to resources and knowledge base
+  - Authorized members: Full access including member approval
+- Member request system with approval workflow
 - Username-based verification
-- Configurable through `config.json`
+- Members stored in knowledge base
 
 ### Conversation Memory
 - Stores conversation history in SQLite
@@ -110,6 +104,12 @@ python bot.py
 - Google Custom Search integration
 - Web content extraction
 - URL processing and content summarization
+
+### Bulk Learning
+- CSV file support for adding multiple entries
+- Multiple delimiter support (comma, semicolon, tab, pipe)
+- Template file with examples
+- Error handling and reporting
 
 ## Deployment
 
@@ -144,6 +144,19 @@ WantedBy=multi-user.target
 sudo systemctl enable sqrdao-bot
 sudo systemctl start sqrdao-bot
 ```
+
+## Dependencies
+
+Core dependencies:
+- `beautifulsoup4` - Web scraping
+- `google-generativeai` - Gemini AI integration
+- `google-api-python-client` - Google Custom Search
+- `python-dotenv` - Environment variables
+- `python-telegram-bot` - Telegram bot functionality
+- `requests` - HTTP requests
+- `trafilatura` - Web content extraction
+
+For a complete list with versions, see `requirements.txt`.
 
 ## Contributing
 
