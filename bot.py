@@ -31,17 +31,194 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load authorized members and members from config file
-try:
-    with open('config.json', 'r') as f:
-        config = json.load(f)
-        AUTHORIZED_MEMBERS = config.get('authorized_members', [])
-        MEMBERS = config.get('members', [])
-except Exception as e:
-    logger.error(f"Error loading config.json: {str(e)}")
-    logger.error("Falling back to empty members lists")
-    AUTHORIZED_MEMBERS = []
-    MEMBERS = []
+# Initialize empty members lists
+AUTHORIZED_MEMBERS = []
+MEMBERS = []
+
+def load_members_from_knowledge():
+    """Load authorized members and regular members from the knowledge base."""
+    global AUTHORIZED_MEMBERS, MEMBERS
+    try:
+        # Load authorized members
+        authorized_members = db.get_knowledge("authorized_members")
+        if authorized_members:
+            AUTHORIZED_MEMBERS = json.loads(authorized_members[0][0])
+        
+        # Load regular members
+        regular_members = db.get_knowledge("members")
+        if regular_members:
+            MEMBERS = json.loads(regular_members[0][0])
+            
+        logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members and {len(MEMBERS)} regular members")
+    except Exception as e:
+        logger.error(f"Error loading members from knowledge base: {str(e)}")
+        logger.error("Falling back to empty members lists")
+        AUTHORIZED_MEMBERS = []
+        MEMBERS = []
+
+def save_members_to_knowledge():
+    """Save current members lists to the knowledge base."""
+    try:
+        # Save authorized members
+        db.store_knowledge("authorized_members", json.dumps(AUTHORIZED_MEMBERS))
+        
+        # Save regular members
+        db.store_knowledge("members", json.dumps(MEMBERS))
+        
+        logger.info("Successfully saved members to knowledge base")
+    except Exception as e:
+        logger.error(f"Error saving members to knowledge base: {str(e)}")
+
+# Initialize database and load members
+db = Database()
+load_members_from_knowledge()
+
+# Store pending member requests
+PENDING_REQUESTS = {}
+
+async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /request_member command - Request to be added as a member."""
+    user = update.effective_user
+    if not user.username:
+        await update.message.reply_text(
+            "❌ You need to set a username in your Telegram settings to request membership.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    if user.username in AUTHORIZED_MEMBERS or user.username in MEMBERS:
+        await update.message.reply_text(
+            "✅ You are already a member!",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    if user.username in PENDING_REQUESTS:
+        await update.message.reply_text(
+            "⏳ You already have a pending membership request. Please wait for approval.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Store the request
+    PENDING_REQUESTS[user.username] = {
+        'user_id': user.id,
+        'username': user.username,
+        'timestamp': datetime.now(),
+        'status': 'pending'
+    }
+    
+    # Notify authorized members
+    for member in AUTHORIZED_MEMBERS:
+        try:
+            await context.bot.send_message(
+                chat_id=member,
+                text=f"🔔 New member request from @{user.username}\n\n"
+                     f"Use /approve_member @{user.username} to approve or\n"
+                     f"/reject_member @{user.username} to reject"
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify authorized member {member}: {str(e)}")
+    
+    await update.message.reply_text(
+        "✅ Your membership request has been submitted!\n"
+        "Our team will review it and get back to you soon.",
+        parse_mode=ParseMode.HTML
+    )
+
+@is_member
+async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /approve_member command - Approve a member request."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please specify the username to approve.\n"
+            "Usage: /approve_member @username",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    username = context.args[0].strip('@')
+    if username not in PENDING_REQUESTS:
+        await update.message.reply_text(
+            "❌ No pending request found for this username.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Add to members list
+    MEMBERS.append(username)
+    save_members_to_knowledge()
+    
+    # Remove from pending requests
+    del PENDING_REQUESTS[username]
+    
+    # Notify the user
+    try:
+        await context.bot.send_message(
+            chat_id=PENDING_REQUESTS[username]['user_id'],
+            text="🎉 Congratulations! Your membership request has been approved!\n\n"
+                 "You now have access to member-only features. Use /help to see available commands."
+        )
+    except Exception as e:
+        logger.error(f"Failed to notify approved user: {str(e)}")
+    
+    await update.message.reply_text(
+        f"✅ Successfully approved @{username} as a member.",
+        parse_mode=ParseMode.HTML
+    )
+
+@is_member
+async def reject_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /reject_member command - Reject a member request."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please specify the username to reject.\n"
+            "Usage: /reject_member @username",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    username = context.args[0].strip('@')
+    if username not in PENDING_REQUESTS:
+        await update.message.reply_text(
+            "❌ No pending request found for this username.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Remove from pending requests
+    del PENDING_REQUESTS[username]
+    
+    # Notify the user
+    try:
+        await context.bot.send_message(
+            chat_id=PENDING_REQUESTS[username]['user_id'],
+            text="❌ Your membership request has been rejected.\n\n"
+                 "If you believe this was a mistake, please contact our team."
+        )
+    except Exception as e:
+        logger.error(f"Failed to notify rejected user: {str(e)}")
+    
+    await update.message.reply_text(
+        f"✅ Successfully rejected @{username}'s membership request.",
+        parse_mode=ParseMode.HTML
+    )
+
+@is_member
+async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /list_requests command - List pending member requests."""
+    if not PENDING_REQUESTS:
+        await update.message.reply_text(
+            "📝 No pending member requests.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    requests_text = "<b>Pending Member Requests:</b>\n\n"
+    for username, request in PENDING_REQUESTS.items():
+        requests_text += f"• @{username} (Requested: {request['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})\n"
+    
+    await update.message.reply_text(requests_text, parse_mode=ParseMode.HTML)
 
 def is_member(func):
     """Decorator to check if user is an authorized member."""
@@ -294,7 +471,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /about - Learn about sqrDAO
 • /events - View sqrDAO events calendar
 • /contact - Get contact information
-• /resources - Access internal resources (members only)
+• /request_member - Request to become a member
 """
 
     if is_authorized or is_regular_member:
@@ -308,6 +485,9 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 <b>Authorized Member Commands:</b>
 • /learn - Add information to knowledge base
 • /bulk_learn - Add multiple entries from CSV file
+• /approve_member - Approve a member request
+• /reject_member - Reject a member request
+• /list_requests - View pending member requests
 """
 
     help_text += """
@@ -840,6 +1020,10 @@ def main():
         application.add_handler(CommandHandler("resources", resources_command))
         application.add_handler(CommandHandler("learn", learn_command))
         application.add_handler(CommandHandler("bulk_learn", bulk_learn_command))
+        application.add_handler(CommandHandler("request_member", request_member))
+        application.add_handler(CommandHandler("approve_member", approve_member))
+        application.add_handler(CommandHandler("reject_member", reject_member))
+        application.add_handler(CommandHandler("list_requests", list_requests))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # Start the Bot
