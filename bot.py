@@ -69,6 +69,72 @@ def save_members_to_knowledge():
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
+class Database:
+    def __init__(self):
+        self.conn = sqlite3.connect('bot_memory.db')
+        self.cursor = self.conn.cursor()
+        self.setup_database()
+
+    def setup_database(self):
+        # Create tables for storing conversations and knowledge
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                message TEXT,
+                response TEXT,
+                timestamp DATETIME,
+                context TEXT
+            )
+        ''')
+        
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS knowledge_base (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic TEXT,
+                information TEXT,
+                source TEXT,
+                timestamp DATETIME
+            )
+        ''')
+        self.conn.commit()
+
+    def store_conversation(self, user_id, message, response, context=None):
+        self.cursor.execute('''
+            INSERT INTO conversations (user_id, message, response, timestamp, context)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, message, response, datetime.now(), context))
+        self.conn.commit()
+
+    def store_knowledge(self, topic, information, source=None):
+        self.cursor.execute('''
+            INSERT INTO knowledge_base (topic, information, source, timestamp)
+            VALUES (?, ?, ?, ?)
+        ''', (topic, information, source, datetime.now()))
+        self.conn.commit()
+
+    def get_relevant_context(self, user_id, message, limit=5):
+        # Simple keyword-based search for now
+        keywords = message.lower().split()
+        query = '''
+            SELECT message, response, context
+            FROM conversations
+            WHERE user_id = ? AND (
+        ''' + ' OR '.join(['lower(message) LIKE ?' for _ in keywords]) + ')'
+        params = [user_id] + ['%' + keyword + '%' for keyword in keywords]
+        
+        self.cursor.execute(query + ' ORDER BY timestamp DESC LIMIT ?', 
+                          params + [limit])
+        return self.cursor.fetchall()
+
+    def get_knowledge(self, topic):
+        self.cursor.execute('''
+            SELECT information
+            FROM knowledge_base
+            WHERE lower(topic) LIKE lower(?)
+        ''', ('%' + topic + '%',))
+        return self.cursor.fetchall()
+
 # Initialize database and load members
 db = Database()
 load_members_from_knowledge()
@@ -500,75 +566,6 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 Just send me a message or use any command to get started!
 """
     await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
-
-class Database:
-    def __init__(self):
-        self.conn = sqlite3.connect('bot_memory.db')
-        self.cursor = self.conn.cursor()
-        self.setup_database()
-
-    def setup_database(self):
-        # Create tables for storing conversations and knowledge
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS conversations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                message TEXT,
-                response TEXT,
-                timestamp DATETIME,
-                context TEXT
-            )
-        ''')
-        
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS knowledge_base (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                topic TEXT,
-                information TEXT,
-                source TEXT,
-                timestamp DATETIME
-            )
-        ''')
-        self.conn.commit()
-
-    def store_conversation(self, user_id, message, response, context=None):
-        self.cursor.execute('''
-            INSERT INTO conversations (user_id, message, response, timestamp, context)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, message, response, datetime.now(), context))
-        self.conn.commit()
-
-    def store_knowledge(self, topic, information, source=None):
-        self.cursor.execute('''
-            INSERT INTO knowledge_base (topic, information, source, timestamp)
-            VALUES (?, ?, ?, ?)
-        ''', (topic, information, source, datetime.now()))
-        self.conn.commit()
-
-    def get_relevant_context(self, user_id, message, limit=5):
-        # Simple keyword-based search for now
-        keywords = message.lower().split()
-        query = '''
-            SELECT message, response, context
-            FROM conversations
-            WHERE user_id = ? AND (
-        ''' + ' OR '.join(['lower(message) LIKE ?' for _ in keywords]) + ')'
-        params = [user_id] + ['%' + keyword + '%' for keyword in keywords]
-        
-        self.cursor.execute(query + ' ORDER BY timestamp DESC LIMIT ?', 
-                          params + [limit])
-        return self.cursor.fetchall()
-
-    def get_knowledge(self, topic):
-        self.cursor.execute('''
-            SELECT information
-            FROM knowledge_base
-            WHERE lower(topic) LIKE lower(?)
-        ''', ('%' + topic + '%',))
-        return self.cursor.fetchall()
-
-# Initialize database
-db = Database()
 
 def process_message_with_context(message, context):
     # Prepare context for the model
