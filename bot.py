@@ -62,7 +62,6 @@ def load_members_from_knowledge():
         
         # Load regular members from knowledge base
         regular_members = db.get_knowledge("members")
-        logger.info(f"Regular members: {regular_members}")
         if regular_members:
             MEMBERS = json.loads(regular_members[0][0])
             logger.info(f"Loaded {len(MEMBERS)} regular members from knowledge base")
@@ -149,18 +148,6 @@ class Database:
             WHERE lower(topic) LIKE lower(?)
         ''', ('%' + topic + '%',))
         return self.cursor.fetchall()
-
-    def store_authorized_member(self, username, user_id):
-        """Store an authorized member's username and user ID in the knowledge base."""
-        try:
-            self.cursor.execute('''
-                INSERT INTO knowledge_base (topic, information, source, timestamp)
-                VALUES (?, ?, ?, ?)
-            ''', (username, str(user_id), 'authorized_members', datetime.now()))
-            self.conn.commit()
-            logger.info(f"Stored authorized member: {username} with ID: {user_id}")
-        except Exception as e:
-            logger.error(f"Error storing authorized member {username}: {str(e)}")
 
 # Initialize database and load members
 db = Database()
