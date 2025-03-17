@@ -1,12 +1,30 @@
 {
-    "authorized_members": [
-        "DarthCastelian",
-        "kevintran25",
-        "kaitlyn2032",
-        "Farosdozz",
-        "ashleyngxxxn",
-        "tuongdoan",
-        "arandomuserlol",
-        "hanjasonn"
-    ]
-} 
+    "authorized_members": [{
+        "user_id": "",
+        "username": "DarthCastelian"
+    },
+    {
+        "user_id": "",
+        "username": "kevintran25"
+    },
+    {
+        "user_id": "",
+        "username": "kaitlyn2032"
+    },
+    {
+        "user_id": "",
+        "username": "Farosdozz"
+    },
+    {
+        "user_id": "",
+        "username": "ashleyngxxxn"
+    },
+    {
+        "user_id": "",
+        "username": "tuongdoan"
+    },
+    {
+        "user_id": "",
+        "username": "arandomuserlol"
+    }]
+}

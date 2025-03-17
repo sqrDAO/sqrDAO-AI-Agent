@@ -36,20 +36,29 @@ logger = logging.getLogger(__name__)
 AUTHORIZED_MEMBERS = []
 MEMBERS = []
 
+# Global variable to store the bot's ID
+bot_id = None
+
 def load_members_from_knowledge():
     """Load regular members from the knowledge base and authorized members from config.json."""
     global AUTHORIZED_MEMBERS, MEMBERS
     try:
-        # Load authorized members from config.json
-        try:
-            with open('config.json', 'r') as f:
-                config = json.load(f)
-                AUTHORIZED_MEMBERS = config.get('authorized_members', [])
-                logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members from config.json")
-        except Exception as e:
-            logger.error(f"Error loading authorized members from config.json: {str(e)}")
-            logger.error("Falling back to empty authorized members list")
-            AUTHORIZED_MEMBERS = []
+        # Check if authorized members are stored in the knowledge base
+        authorized_members_knowledge = db.get_knowledge("authorized_members")
+        if authorized_members_knowledge:
+            AUTHORIZED_MEMBERS = json.loads(authorized_members_knowledge[0][0])
+            logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members from knowledge base")
+        else:
+            # Load authorized members from config.json if not found in knowledge base
+            try:
+                with open('config.json', 'r') as f:
+                    config = json.load(f)
+                    AUTHORIZED_MEMBERS = config.get('authorized_members', [])
+                    logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members from config.json")
+            except Exception as e:
+                logger.error(f"Error loading authorized members from config.json: {str(e)}")
+                logger.error("Falling back to empty authorized members list")
+                AUTHORIZED_MEMBERS = []
         
         # Load regular members from knowledge base
         regular_members = db.get_knowledge("members")
@@ -140,9 +149,20 @@ class Database:
         ''', ('%' + topic + '%',))
         return self.cursor.fetchall()
 
+    def store_authorized_member(self, username, user_id):
+        """Store an authorized member's username and user ID in the knowledge base."""
+        try:
+            self.cursor.execute('''
+                INSERT INTO knowledge_base (topic, information, source, timestamp)
+                VALUES (?, ?, ?, ?)
+            ''', (username, str(user_id), 'authorized_members', datetime.now()))
+            self.conn.commit()
+            logger.info(f"Stored authorized member: {username} with ID: {user_id}")
+        except Exception as e:
+            logger.error(f"Error storing authorized member {username}: {str(e)}")
+
 # Initialize database and load members
 db = Database()
-load_members_from_knowledge()
 
 # Store pending member requests
 PENDING_REQUESTS = {}
@@ -152,7 +172,8 @@ def is_member(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        if user.username and user.username in AUTHORIZED_MEMBERS:
+        logger.info(f"User: {user}")
+        if user.username and find_authorized_member_by_username(user.username):
             return await func(update, context)
         else:
             await update.message.reply_text(
@@ -167,7 +188,7 @@ def is_any_member(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        if user.username and (user.username in AUTHORIZED_MEMBERS or user.username in MEMBERS):
+        if user.username and (find_authorized_member_by_username(user.username) or find_member_by_username(user.username)):
             return await func(update, context)
         else:
             await update.message.reply_text(
@@ -177,50 +198,38 @@ def is_any_member(func):
             )
     return wrapper
 
-@is_member
 async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /request_member command - Request to be added as a member."""
     user = update.effective_user
-    if not user.username:
+    user_id = user.id  # Get the user ID
+
+    # Check if the user is already a member
+    if find_authorized_member_by_username(user.username) or find_member_by_username(user.username):
         await update.message.reply_text(
-            "❌ You need to set a username in your Telegram settings to request membership.",
+            "❌ You are already a member and cannot request membership again.",
             parse_mode=ParseMode.HTML
         )
         return
-    
-    if user.username in AUTHORIZED_MEMBERS or user.username in MEMBERS:
-        await update.message.reply_text(
-            "✅ You are already a member!",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    if user.username in PENDING_REQUESTS:
-        await update.message.reply_text(
-            "⏳ You already have a pending membership request. Please wait for approval.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    # Store the request
-    PENDING_REQUESTS[user.username] = {
-        'user_id': user.id,
+
+    # Store the user ID in PENDING_REQUESTS instead of username
+    PENDING_REQUESTS[user_id] = {
+        'user_id': user_id,
         'username': user.username,
         'timestamp': datetime.now(),
         'status': 'pending'
     }
-    
-    # Notify authorized members
-    for member in AUTHORIZED_MEMBERS:
+
+    # Notify authorized members using user IDs
+    for member_id in AUTHORIZED_MEMBERS:  # Ensure AUTHORIZED_MEMBERS contains user IDs
         try:
             await context.bot.send_message(
-                chat_id=member,
-                text=f"🔔 New member request from @{user.username}\n\n"
-                     f"Use /approve_member @{user.username} to approve or\n"
-                     f"/reject_member @{user.username} to reject"
+                chat_id=member_id,
+                text=f"🔔 New member request from {user.username}\n\n"
+                     f"Use /approve_member {user_id} to approve or\n"
+                     f"/reject_member {user_id} to reject"
             )
         except Exception as e:
-            logger.error(f"Failed to notify authorized member {member}: {str(e)}")
+            logger.error(f"Failed to notify authorized member {member_id}: {str(e)}")
     
     await update.message.reply_text(
         "✅ Your membership request has been submitted!\n"
@@ -526,8 +535,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /help is issued."""
     user = update.effective_user
-    is_authorized = user.username in AUTHORIZED_MEMBERS
-    is_regular_member = user.username in MEMBERS
+    is_authorized = find_authorized_member_by_username(user['username'])
+    is_regular_member = find_member_by_username(user['username'])
     
     help_text = """
 <b>🤖 sqrAgent Help</b>
@@ -540,7 +549,6 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /about - Learn about sqrDAO
 • /events - View sqrDAO events calendar
 • /contact - Get contact information
-• /resources - Access internal resources (members only)
 • /request_member - Request to become a member
 """
 
@@ -706,6 +714,7 @@ async def set_bot_commands(application):
         ("website", "Get sqrDAO's website"),
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
+        ("resources", "Access internal resources (members only)"),
         ("request_member", "Request to become a member")
     ]
     
@@ -732,20 +741,34 @@ async def set_bot_commands(application):
         try:
             await application.bot.set_my_commands(
                 member_commands,
-                scope=telegram.BotCommandScopeChat(member)
+                scope=telegram.BotCommandScopeChat(member)  # Ensure member is a user ID
             )
         except Exception as e:
             logger.error(f"Failed to set commands for member {member}: {str(e)}")
     
-    # Set authorized commands for authorized members
+    # Set authorized commands for authorized members using usernames
     for member in AUTHORIZED_MEMBERS:
+        logger.info(f"Setting commands for authorized member {member['username']}")
         try:
+            # Ensure username is valid and formatted correctly
+            if member['username'].startswith('@'):
+                user = await application.bot.get_chat(member)  # Try to get user info from username
+                user_id = user.id  # Extract the user ID
+                await application.bot.set_my_commands(
+                    authorized_commands,
+                    scope=telegram.BotCommandScopeChat(user_id)  # Use user ID here
+                )
+            else:
+                logger.warning(f"Invalid username format for {member['username']}. Skipping setting commands.")
+        except telegram.error.BadRequest as e:
+            logger.warning(f"Chat not found for username {member['username']}: {str(e)}")
             await application.bot.set_my_commands(
                 authorized_commands,
-                scope=telegram.BotCommandScopeChat(member)
+                # scope=telegram.BotCommandScopeChat(username['username'])  # Use user ID here
             )
+            # Optionally, you can log the username and continue
         except Exception as e:
-            logger.error(f"Failed to set commands for authorized member {member}: {str(e)}")
+            logger.error(f"Failed to set commands for authorized member {member['username']}: {str(e)}")
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /about command."""
@@ -807,7 +830,7 @@ For access issues, please contact @DarthCastelian.
 """
     await update.message.reply_text(resources_text, parse_mode=ParseMode.HTML)
 
-@is_any_member
+@is_member
 async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /learn command - Available to authorized members only."""
     message = update.message.text.strip()
@@ -1056,6 +1079,20 @@ async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
+def find_authorized_member_by_username(username):
+    """Find an authorized member by username."""
+    for member in AUTHORIZED_MEMBERS:
+        if member.get('username') == username:
+            return member  # Return the member object if found
+    return None  # Return None if not found
+
+def find_member_by_username(username):
+    """Find a regular member by username."""
+    for member in MEMBERS:
+        if member.get('username') == username:
+            return member  # Return the member object if found
+    return None  # Return None if not found
+
 def main():
     """Start the bot."""
     try:
@@ -1065,6 +1102,13 @@ def main():
             
         # Create the Application with concurrent updates
         application = Application.builder().token(telegram_token).concurrent_updates(True).build()
+
+        # Initialize database
+        global db
+        db = Database()
+
+        # Load members after the application is created
+        load_members_from_knowledge()
 
         # Add handlers
         application.add_handler(CommandHandler("start", start))
@@ -1086,12 +1130,19 @@ def main():
         # Start the Bot
         logger.info("Starting bot...")
         application.post_init = set_bot_commands
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
         
+        # Start polling and set the bot ID after the bot is running
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+        # Store the bot ID after the application is created
+        global bot_id
+        bot_id = application.bot.id  # This should be safe now
+
     except Exception as e:
         logger.error(f"Fatal error in main(): {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
 if __name__ == '__main__':
-    main() 
+    import asyncio
+    asyncio.run(main()) 
