@@ -1054,7 +1054,7 @@ async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             db.store_knowledge(topic, content)
             await update.message.reply_text(
-                f"✅ Successfully learned from the URL: {url}",
+                f"✅ Successfully learned from the URL: <a href='{url}'>{url}</a>",
                 parse_mode=ParseMode.HTML
             )
         except Exception as e:
