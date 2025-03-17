@@ -1012,7 +1012,7 @@ async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /learn_from_url command - Learn from a web page."""
     if not context.args or len(context.args) < 1:
         await update.message.reply_text(
-            "❌ Please provide a URL to learn from.\nUsage: /learn_from_url <url>\n"
+            "❌ Please provide a URL to learn from.\nUsage: /learn_from_url [url]\n"
             "Make sure the URL starts with http:// or https://.",
             parse_mode=ParseMode.HTML
         )
@@ -1025,7 +1025,7 @@ async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ The provided input does not appear to be a valid URL.\n"
             "Please provide a valid URL starting with http:// or https://.\n"
-            "Usage: /learn_from_url <url>",
+            "Usage: /learn_from_url [url]",
             parse_mode=ParseMode.HTML
         )
         return
