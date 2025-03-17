@@ -20,9 +20,7 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from datetime import datetime
 from typing import List, Tuple
-from solana.rpc.api import Client
-from solders.pubkey import Pubkey
-from solana.rpc.types import TxOpts
+
 
 # Load environment variables
 load_dotenv()
@@ -179,6 +177,7 @@ def is_any_member(func):
             )
     return wrapper
 
+@is_member
 async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /request_member command - Request to be added as a member."""
     user = update.effective_user
@@ -1057,53 +1056,6 @@ async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
-@is_member
-async def check_token_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /check_balance command - Check the balance of a specific token."""
-    if not context.args or len(context.args) < 1:
-        await update.message.reply_text(
-            "❌ Please provide your wallet address.\n"
-            "Usage: /check_balance <wallet_address>",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    wallet_address = context.args[0]
-    token_mint_address = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"  # Define $SQR token mint address here
-
-    # Initialize Solana client
-    client = Client("https://api.mainnet-beta.solana.com")
-
-    try:
-        # Correctly create a Pubkey instance
-        public_key = Pubkey.from_string(token_mint_address)  # Use from_string to create a Pubkey
-
-        # Get the balance of the token
-        token_balance = client.get_token_account_balance(public_key, opts=TxOpts(encoding="jsonParsed"))
-        
-        if token_balance['value']['amount']:
-            await update.message.reply_text(
-                f"✅ The $SQR token balance for your wallet {wallet_address} is: {token_balance['value']['amount']}",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await update.message.reply_text(
-                "❌ No balance found for $SQR token.",
-                parse_mode=ParseMode.HTML
-            )
-    except Exception as e:
-        logger.error(f"Error checking token balance: {str(e)}")
-        await update.message.reply_text(
-            "❌ An error occurred while checking $SQR token balance. Please try again.",
-            parse_mode=ParseMode.HTML
-        )
-
-    if len(token_mint_address) != 44:
-        logger.error("Invalid token mint address length.")
-        return
-
-    logger.info(f"Using token mint address: {token_mint_address}")
-
 def main():
     """Start the bot."""
     try:
@@ -1129,7 +1081,6 @@ def main():
         application.add_handler(CommandHandler("reject_member", reject_member))
         application.add_handler(CommandHandler("list_requests", list_requests))
         application.add_handler(CommandHandler("learn_from_url", learn_from_url))
-        application.add_handler(CommandHandler("check_balance", check_token_balance))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # Start the Bot

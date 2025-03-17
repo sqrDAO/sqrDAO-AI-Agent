@@ -25,3 +25,6 @@ Thumbs.db
 # Logs
 *.log
 logs/ sqrdao-bot.service
+
+# Database files
+bot_memory.db
