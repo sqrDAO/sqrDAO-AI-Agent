@@ -540,21 +540,6 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /contact - Get contact information
 • /resources - Access internal resources (members only)
 • /request_member - Request to become a member
-
-### Member Commands
-Members have access to:
-• All public commands
-• /resources - Access internal resources and documentation
-
-### Authorized Member Commands
-Authorized members have access to:
-• All public and member commands
-• /learn - Add information to the bot's knowledge base
-• /learn_from_url <url> - Learn from a web page by providing a URL
-• /bulk_learn - Add multiple entries from CSV file
-• /approve_member - Approve a member request
-• /reject_member - Reject a member request
-• /list_requests - View pending member requests
 """
 
     if is_authorized or is_regular_member:
@@ -567,7 +552,7 @@ Authorized members have access to:
         help_text += """
 <b>Authorized Member Commands:</b>
 • /learn - Add information to the bot's knowledge base
-• /learn_from_url <url> - Learn from a web page by providing a URL
+• /learn_from_url - Learn from a web page by providing a URL
 • /bulk_learn - Add multiple entries from CSV file
 • /approve_member - Approve a member request
 • /reject_member - Reject a member request
