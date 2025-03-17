@@ -706,7 +706,6 @@ async def set_bot_commands(application):
         ("website", "Get sqrDAO's website"),
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
-        ("resources", "Access internal resources (members only)"),
         ("request_member", "Request to become a member")
     ]
     
@@ -718,6 +717,7 @@ async def set_bot_commands(application):
     # Additional commands for authorized members
     authorized_commands = member_commands + [
         ("learn", "Add information to knowledge base"),
+        ("learn_from_url", "Learn from a web page by providing a URL"),
         ("bulk_learn", "Add multiple entries from CSV file"),
         ("approve_member", "Approve a member request"),
         ("reject_member", "Reject a member request"),
