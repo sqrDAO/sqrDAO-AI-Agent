@@ -11,3 +11,5 @@ google-auth-httplib2==0.2.0
 httplib2==0.22.0
 soupsieve==2.6
 urllib3==2.3.0
+solana==0.36.0
+solders==0.23.0
