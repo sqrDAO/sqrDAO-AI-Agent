@@ -44,6 +44,40 @@ To set up your bot on Telegram, follow these steps:
 
 6. **Configure Your Bot**: Follow the remaining setup instructions in the README to install dependencies and run your bot.
 
+## Setting Up Google Custom Search Engine
+
+To set up Google Custom Search Engine (CSE) for your bot, follow these steps:
+
+1. **Go to Google Custom Search**: Visit the [Google Custom Search Engine](https://cse.google.com/cse/all) page.
+
+2. **Create a New Search Engine**:
+   - Click on the "Add" button to create a new search engine.
+   - Fill in the required fields:
+     - **Sites to Search**: Enter the websites you want to include in your search engine. You can add multiple sites.
+     - **Name**: Give your search engine a name.
+   - Click on the "Create" button.
+
+3. **Get Your Search Engine ID**:
+   - After creating the search engine, you will be taken to the control panel.
+   - Find your **Search Engine ID** in the control panel. You will need this ID for your bot.
+
+4. **Enable the Custom Search API**:
+   - Go to the [Google Cloud Console](https://console.cloud.google.com/).
+   - Create a new project or select an existing project.
+   - Navigate to **APIs & Services** > **Library**.
+   - Search for "Custom Search API" and enable it for your project.
+
+5. **Create API Credentials**:
+   - In the Google Cloud Console, go to **APIs & Services** > **Credentials**.
+   - Click on "Create Credentials" and select "API key".
+   - Copy the generated API key. You will need to add it to your `.env` file.
+
+6. **Store Your API Key and CSE ID**: Add the following lines to your `.env` file:
+   ```
+   GOOGLE_API_KEY=your_google_api_key
+   GOOGLE_CSE_ID=your_google_cse_id
+   ```
+
 ## Commands
 
 ### Public Commands
@@ -53,7 +87,6 @@ To set up your bot on Telegram, follow these steps:
 - `/website` - Get sqrDAO's website
 - `/contact` - Get contact information
 - `/events` - View sqrDAO events calendar
-- `/resources` - Access internal resources (members only)
 - `/request_member` - Request to become a member
 
 ### Member Commands
@@ -66,7 +99,7 @@ Authorized members have access to:
 - All public and member commands
 - `/learn` - Add information to the bot's knowledge base
 - `/bulk_learn` - Add multiple entries from CSV file
-- `/learn_from_url <url>` - Learn from a web page by providing a URL
+- `/learn_from_url` - Learn from a web page by providing a URL
 - `/approve_member` - Approve a member request
 - `/reject_member` - Reject a member request
 - `/list_requests` - View pending member requests
