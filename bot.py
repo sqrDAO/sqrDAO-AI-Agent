@@ -540,6 +540,21 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /contact - Get contact information
 • /resources - Access internal resources (members only)
 • /request_member - Request to become a member
+
+### Member Commands
+Members have access to:
+• All public commands
+• /resources - Access internal resources and documentation
+
+### Authorized Member Commands
+Authorized members have access to:
+• All public and member commands
+• /learn - Add information to the bot's knowledge base
+• /learn_from_url <url> - Learn from a web page by providing a URL
+• /bulk_learn - Add multiple entries from CSV file
+• /approve_member - Approve a member request
+• /reject_member - Reject a member request
+• /list_requests - View pending member requests
 """
 
     if is_authorized or is_regular_member:
@@ -551,7 +566,8 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
     if is_authorized:
         help_text += """
 <b>Authorized Member Commands:</b>
-• /learn - Add information to knowledge base
+• /learn - Add information to the bot's knowledge base
+• /learn_from_url <url> - Learn from a web page by providing a URL
 • /bulk_learn - Add multiple entries from CSV file
 • /approve_member - Approve a member request
 • /reject_member - Reject a member request
@@ -1011,12 +1027,23 @@ async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /learn_from_url command - Learn from a web page."""
     if not context.args or len(context.args) < 1:
         await update.message.reply_text(
-            "❌ Please provide a URL to learn from.\nUsage: /learn_from_url <url>",
+            "❌ Please provide a URL to learn from.\nUsage: /learn_from_url <url>\n"
+            "Make sure the URL starts with http:// or https://.",
             parse_mode=ParseMode.HTML
         )
         return
 
     url = context.args[0]
+
+    # Check if the provided argument is a valid URL
+    if not (url.startswith("http://") or url.startswith("https://")):
+        await update.message.reply_text(
+            "❌ The provided input does not appear to be a valid URL.\n"
+            "Please provide a valid URL starting with http:// or https://.\n"
+            "Usage: /learn_from_url <url>",
+            parse_mode=ParseMode.HTML
+        )
+        return
     
     # Fetch the content from the URL
     content = get_webpage_content(url)

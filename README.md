@@ -19,6 +19,31 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - 📝 Bulk learning from CSV files
 - 👥 Member request system
 
+## Setting Up the Bot on Telegram
+
+To set up your bot on Telegram, follow these steps:
+
+1. **Open Telegram**: If you haven't already, download and install the Telegram app on your device or use the web version.
+
+2. **Find BotFather**: In the Telegram app, search for `@BotFather` and start a chat with it. BotFather is the official Telegram bot that helps you create and manage your bots.
+
+3. **Create a New Bot**:
+   - Type `/newbot` and send the message.
+   - BotFather will ask you for a name for your bot. This is the display name that users will see.
+   - Next, you will be prompted to choose a username for your bot. The username must end with `bot` (e.g., `sqrdao_bot`).
+
+4. **Get Your Bot Token**: After successfully creating your bot, BotFather will provide you with a token. This token is essential for your bot to connect to the Telegram API. It will look something like this:
+   ```
+   123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+   ```
+
+5. **Store Your Token**: Make sure to store this token securely. You will need to add it to your `.env` file in your project directory later as follows:
+   ```
+   TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+   ```
+
+6. **Configure Your Bot**: Follow the remaining setup instructions in the README to install dependencies and run your bot.
+
 ## Commands
 
 ### Public Commands
@@ -41,6 +66,7 @@ Authorized members have access to:
 - All public and member commands
 - `/learn` - Add information to the bot's knowledge base
 - `/bulk_learn` - Add multiple entries from CSV file
+- `/learn_from_url <url>` - Learn from a web page by providing a URL
 - `/approve_member` - Approve a member request
 - `/reject_member` - Reject a member request
 - `/list_requests` - View pending member requests
