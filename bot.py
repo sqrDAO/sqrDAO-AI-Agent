@@ -62,6 +62,7 @@ def load_members_from_knowledge():
         
         # Load regular members from knowledge base
         regular_members = db.get_knowledge("members")
+        logger.info(f"Regular members: {regular_members}")
         if regular_members:
             MEMBERS = json.loads(regular_members[0][0])
             logger.info(f"Loaded {len(MEMBERS)} regular members from knowledge base")
@@ -172,7 +173,6 @@ def is_member(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        logger.info(f"User: {user}")
         if user.username and find_authorized_member_by_username(user.username):
             return await func(update, context)
         else:
@@ -188,6 +188,7 @@ def is_any_member(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
+        logger.info(f"User: {user}")
         if user.username and (find_authorized_member_by_username(user.username) or find_member_by_username(user.username)):
             return await func(update, context)
         else:
@@ -212,7 +213,7 @@ async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Store the user ID in PENDING_REQUESTS instead of username
-    PENDING_REQUESTS[user_id] = {
+    PENDING_REQUESTS[user.username] = {
         'user_id': user_id,
         'username': user.username,
         'timestamp': datetime.now(),
@@ -256,9 +257,18 @@ async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Add to members list
-    MEMBERS.append(username)
-    save_members_to_knowledge()
+    # Get user ID from pending requests
+    user_id = PENDING_REQUESTS[username]['user_id']
+    
+    # Add to members list with both username and user_id
+    MEMBERS.append({
+        'username': username,
+        'user_id': user_id
+    })
+    save_members_to_knowledge()  # Ensure this function is updated to handle the new structure
+    
+    # Store the authorized member in the knowledge base
+    db.store_authorized_member(username, user_id)  # Save both username and user_id
     
     # Remove from pending requests
     del PENDING_REQUESTS[username]
@@ -266,7 +276,7 @@ async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Notify the user
     try:
         await context.bot.send_message(
-            chat_id=PENDING_REQUESTS[username]['user_id'],
+            chat_id=user_id,
             text="🎉 Congratulations! Your membership request has been approved!\n\n"
                  "You now have access to member-only features. Use /help to see available commands."
         )
@@ -326,9 +336,8 @@ async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     requests_text = "<b>Pending Member Requests:</b>\n\n"
-    for username, request in PENDING_REQUESTS.items():
-        requests_text += f"• @{username} (Requested: {request['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})\n"
-    
+    for user_id, request in PENDING_REQUESTS.items():
+        requests_text += f"• @{request['username']} (Requested: {request['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})\n"
     await update.message.reply_text(requests_text, parse_mode=ParseMode.HTML)
 
 # Configure API keys
@@ -1082,14 +1091,14 @@ async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def find_authorized_member_by_username(username):
     """Find an authorized member by username."""
     for member in AUTHORIZED_MEMBERS:
-        if member.get('username') == username:
+        if member['username'] == username:
             return member  # Return the member object if found
     return None  # Return None if not found
 
 def find_member_by_username(username):
     """Find a regular member by username."""
     for member in MEMBERS:
-        if member.get('username') == username:
+        if member['username'] == username:
             return member  # Return the member object if found
     return None  # Return None if not found
 
