@@ -62,7 +62,6 @@ def load_members_from_knowledge():
         
         # Load regular members from knowledge base
         regular_members = db.get_knowledge("members")
-        logger.info(f"Regular members: {regular_members}")
         if regular_members:
             MEMBERS = json.loads(regular_members[0][0])
             logger.info(f"Loaded {len(MEMBERS)} regular members from knowledge base")
@@ -149,18 +148,6 @@ class Database:
             WHERE lower(topic) LIKE lower(?)
         ''', ('%' + topic + '%',))
         return self.cursor.fetchall()
-
-    def store_authorized_member(self, username, user_id):
-        """Store an authorized member's username and user ID in the knowledge base."""
-        try:
-            self.cursor.execute('''
-                INSERT INTO knowledge_base (topic, information, source, timestamp)
-                VALUES (?, ?, ?, ?)
-            ''', (username, str(user_id), 'authorized_members', datetime.now()))
-            self.conn.commit()
-            logger.info(f"Stored authorized member: {username} with ID: {user_id}")
-        except Exception as e:
-            logger.error(f"Error storing authorized member {username}: {str(e)}")
 
 # Initialize database and load members
 db = Database()
@@ -404,77 +391,16 @@ except Exception as e:
 
 def format_response_for_telegram(text):
     """Format the response text to be compatible with Telegram's HTML."""
-    # First, escape special HTML characters in the text, but not in code blocks
-    chunks = []
-    is_code = False
-    current_chunk = ""
-    
-    for line in text.split('\n'):
-        if line.strip().startswith('```') and line.strip().endswith('```'):
-            # Single-line code block
-            code = line.strip()[3:-3]
-            chunks.append(f"<code>{code}</code>")
-            continue
-        elif line.strip().startswith('```'):
-            is_code = True
-            if current_chunk:
-                chunks.append(current_chunk)
-            current_chunk = line.replace('```', '')
-            continue
-        elif line.strip().endswith('```') and is_code:
-            is_code = False
-            current_chunk += '\n' + line.replace('```', '')
-            chunks.append(f"<pre>{current_chunk}</pre>")
-            current_chunk = ""
-            continue
-            
-        if is_code:
-            current_chunk += '\n' + line
-        else:
-            # First escape HTML special characters
-            line = line.replace('&', '&amp;')
-            line = line.replace('<', '&lt;')
-            line = line.replace('>', '&gt;')
-            
-            # Handle headers before other formatting
-            if line.strip().startswith('## '):
-                line = f"<b>{line.strip()[3:]}</b>"
-            elif line.strip().startswith('# '):
-                line = f"<b><u>{line.strip()[2:]}</u></b>"
-            elif line.strip().startswith('### '):
-                line = f"<b><i>{line.strip()[4:]}</i></b>"
-            else:
-                # Convert markdown to HTML, being careful with nested tags
-                # Bold - replace ** with temporary markers
-                line = re.sub(r'\*\*(.*?)\*\*', '[[BOLD]]\\1[[/BOLD]]', line)
-                # Italic - replace * with temporary markers
-                line = re.sub(r'\*(.*?)\*', '[[ITALIC]]\\1[[/ITALIC]]', line)
-                # Code - replace ` with temporary markers
-                line = re.sub(r'`(.*?)`', '[[CODE]]\\1[[/CODE]]', line)
-                # Links - replace with temporary markers
-                line = re.sub(r'\[(.*?)\]\((.*?)\)', '[[LINK]]\\1[[URL]]\\2[[/LINK]]', line)
-                
-                # Now replace the markers with actual HTML tags
-                line = line.replace('[[BOLD]]', '<b>').replace('[[/BOLD]]', '</b>')
-                line = line.replace('[[ITALIC]]', '<i>').replace('[[/ITALIC]]', '</i>')
-                line = line.replace('[[CODE]]', '<code>').replace('[[/CODE]]', '</code>')
-                line = re.sub(r'\[\[LINK\]\](.*?)\[\[URL\]\](.*?)\[\[/LINK\]\]', r'<a href="\2">\1</a>', line)
-                
-                # Handle bullet points last
-                if line.strip().startswith('* '):
-                    line = '• ' + line[2:]
-            
-            if current_chunk:
-                current_chunk += '\n' + line
-            else:
-                current_chunk = line
-    
-    if current_chunk:
-        chunks.append(current_chunk)
-    
-    result = '\n'.join(chunks)
-    
-    return result
+    # Escape special HTML characters
+    text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+    # Ensure proper handling of tags
+    # Example: Replace **bold** with <b>bold</b>
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)  # Italics
+    text = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2">\1</a>', text)  # Links
+
+    return text
 
 def extract_urls(text):
     """Extract URLs from text."""
@@ -659,6 +585,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Format and send response with HTML formatting
         formatted_text = format_response_for_telegram(response)
         
+        logger.debug(f"Formatted response: {formatted_text}")
+        
         await update.message.reply_text(
             formatted_text,
             parse_mode=ParseMode.HTML
@@ -700,6 +628,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Format and send response with HTML formatting
         formatted_text = format_response_for_telegram(response)
+        
+        logger.debug(f"Formatted response: {formatted_text}")
         
         await update.message.reply_text(
             formatted_text,
