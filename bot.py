@@ -253,9 +253,8 @@ async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'user_id': user_id
     })
     save_members_to_knowledge()  # Ensure this function is updated to handle the new structure
-    
+    logger.info(f"Added member: {username} with user_id: {user_id}")
     # Store the authorized member in the knowledge base
-    db.store_authorized_member(username, user_id)  # Save both username and user_id
     
     # Remove from pending requests
     del PENDING_REQUESTS[username]
