@@ -67,7 +67,7 @@ def load_members_from_knowledge():
             logger.info(f"Loaded {len(MEMBERS)} regular members from knowledge base")
         else:
             MEMBERS = []
-            
+
     except Exception as e:
         logger.error(f"Error loading members: {str(e)}")
         logger.error("Falling back to empty members lists")
@@ -661,16 +661,6 @@ async def set_bot_commands(application):
         ("resources", "Access internal resources")
     ]
     
-    # Additional commands for authorized members
-    authorized_commands = member_commands + [
-        ("learn", "Add information to knowledge base"),
-        ("learn_from_url", "Learn from a web page by providing a URL"),
-        ("bulk_learn", "Add multiple entries from CSV file"),
-        ("approve_member", "Approve a member request"),
-        ("reject_member", "Reject a member request"),
-        ("list_requests", "View pending member requests")
-    ]
-    
     # Set basic commands for all users
     await application.bot.set_my_commands(basic_commands)
     
@@ -679,34 +669,10 @@ async def set_bot_commands(application):
         try:
             await application.bot.set_my_commands(
                 member_commands,
-                scope=telegram.BotCommandScopeChat(member)  # Ensure member is a user ID
+                scope=telegram.BotCommandScopeChat(member['user_id'])  # Ensure member is a user ID
             )
         except Exception as e:
-            logger.error(f"Failed to set commands for member {member}: {str(e)}")
-    
-    # Set authorized commands for authorized members using usernames
-    for member in AUTHORIZED_MEMBERS:
-        logger.info(f"Setting commands for authorized member {member['username']}")
-        try:
-            # Ensure username is valid and formatted correctly
-            if member['username'].startswith('@'):
-                user = await application.bot.get_chat(member)  # Try to get user info from username
-                user_id = user.id  # Extract the user ID
-                await application.bot.set_my_commands(
-                    authorized_commands,
-                    scope=telegram.BotCommandScopeChat(user_id)  # Use user ID here
-                )
-            else:
-                logger.warning(f"Invalid username format for {member['username']}. Skipping setting commands.")
-        except telegram.error.BadRequest as e:
-            logger.warning(f"Chat not found for username {member['username']}: {str(e)}")
-            await application.bot.set_my_commands(
-                authorized_commands,
-                # scope=telegram.BotCommandScopeChat(username['username'])  # Use user ID here
-            )
-            # Optionally, you can log the username and continue
-        except Exception as e:
-            logger.error(f"Failed to set commands for authorized member {member['username']}: {str(e)}")
+            logger.error(f"Failed to set commands for member {member['username']}: {str(e)}")
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /about command."""
