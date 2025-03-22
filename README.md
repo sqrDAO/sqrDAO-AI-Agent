@@ -18,6 +18,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - 🧠 Conversation memory
 - 📝 Bulk learning from CSV files
 - 👥 Member request system
+- 💰 **Solana Balance Check** - Check the Solana balance using wallet address or .sol DID leveraging SNS.ID
 
 ## Setting Up the Bot on Telegram
 
@@ -88,6 +89,7 @@ To set up Google Custom Search Engine (CSE) for your bot, follow these steps:
 - `/contact` - Get contact information
 - `/events` - View sqrDAO events calendar
 - `/request_member` - Request to become a member
+- `/check_balance <wallet_address> OR <sns_id>` - Check the Solana balance using wallet address or SNS ID
 
 ### Member Commands
 Members have access to:

@@ -1028,7 +1028,7 @@ def find_member_by_username(username):
     return None  # Return None if not found
 
 async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /balance command to check SQR token balance for a Solana wallet or SNS domain."""
+    """Handle /balance command to check SQR token balance for a Solana wallet or .sol domain."""
     if not context.args or len(context.args) < 1:
         await update.message.reply_text(
             "❌ Please provide the wallet address or SNS domain.\n"
