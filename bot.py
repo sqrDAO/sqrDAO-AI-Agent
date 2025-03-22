@@ -20,7 +20,31 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from datetime import datetime
 from typing import List, Tuple
+from solders.pubkey import Pubkey
+from solana.rpc.api import Client
+from spl.token.client import Token
+import base58
+from solders.keypair import Keypair
 
+# SNS resolution function
+async def resolve_sns_domain(domain: str) -> str:
+    """Resolve a .sol domain to its wallet address using Bonfida's HTTP API."""
+    try:
+        # Remove .sol extension if present
+        domain = domain.lower().replace('.sol', '')
+        
+        # Call Bonfida's HTTP API
+        response = requests.get(f'https://sns-sdk-proxy.bonfida.workers.dev/resolve/{domain}')
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('s') == 'ok' and data.get('result'):
+                return data['result']
+        
+        return None
+    except Exception as e:
+        logger.error(f"Error resolving SNS domain: {str(e)}")
+        return None
 
 # Load environment variables
 load_dotenv()
@@ -38,6 +62,10 @@ MEMBERS = []
 
 # Global variable to store the bot's ID
 bot_id = None
+
+# Add these constants after other API configurations
+SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
+solana_client = Client(SOLANA_RPC_URL)
 
 def load_members_from_knowledge():
     """Load regular members from the knowledge base and authorized members from config.json."""
@@ -479,10 +507,12 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 
 <b>Available Commands:</b>
 • /start - Start the bot and get welcome message
-• /help - Show this help message
+• /help - Show help and list of available commands
 • /about - Learn about sqrDAO
-• /events - View sqrDAO events calendar
+• /website - Get sqrDAO's website
 • /contact - Get contact information
+• /events - View sqrDAO events
+• /balance - Check Solana token balance
 • /request_member - Request to become a member
 """
 
@@ -652,7 +682,7 @@ async def set_bot_commands(application):
         ("website", "Get sqrDAO's website"),
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
-        ("resources", "Access internal resources (members only)"),
+        ("balance", "Check Solana token balance"),  # Added balance command
         ("request_member", "Request to become a member")
     ]
     
@@ -997,6 +1027,145 @@ def find_member_by_username(username):
             return member  # Return the member object if found
     return None  # Return None if not found
 
+async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /balance command to check SQR token balance for a Solana wallet or SNS domain."""
+    if not context.args or len(context.args) < 1:
+        await update.message.reply_text(
+            "❌ Please provide the wallet address or SNS domain.\n"
+            "Usage: /balance [wallet_address or sns_domain]\n"
+            "Examples:\n"
+            "• /balance 5vJRzKtcp4fJxqmR7qzajkGNF9dqQk49TPhWXLDZAJf6\n"
+            "• /balance castelian.sol",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    input_address = context.args[0]
+    token_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"  # Hardcoded mint address for SQR
+    
+    # Check if input is an SNS domain
+    wallet_address = None
+    display_address = input_address
+    if input_address.lower().endswith('.sol') or not (input_address.startswith('1') or input_address.startswith('2') or input_address.startswith('3') or input_address.startswith('4') or input_address.startswith('5') or input_address.startswith('6') or input_address.startswith('7') or input_address.startswith('8') or input_address.startswith('9')):
+        logger.info(f"Resolving SNS domain: {input_address}")
+        resolved_address = await resolve_sns_domain(input_address)
+        if resolved_address:
+            wallet_address = resolved_address
+            display_address = f"{input_address} ({wallet_address[:4]}...{wallet_address[-4:]})"
+        else:
+            await update.message.reply_text(
+                f"❌ Could not resolve SNS domain: {input_address}",
+                parse_mode=ParseMode.HTML
+            )
+            return
+    else:
+        wallet_address = input_address
+        display_address = f"{wallet_address[:4]}...{wallet_address[-4:]}"
+
+    logger.info(f"Checking balance for wallet: {wallet_address} and token: {token_mint}")
+
+    try:
+        # Validate addresses
+        try:
+            wallet_pubkey = Pubkey.from_string(wallet_address)
+            # Get SPL Token program ID
+            token_program_id = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            # Create a dummy keypair as payer since we're only reading data
+            dummy_payer = Keypair()
+            logger.info("Successfully validated addresses and created token program ID")
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Invalid wallet address format.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Initialize token client with program ID and payer
+        token = Token(
+            conn=solana_client,
+            pubkey=Pubkey.from_string(token_mint),
+            program_id=token_program_id,
+            payer=dummy_payer
+        )
+        logger.info("Successfully initialized Token client")
+
+        # Get token accounts
+        token_accounts = token.get_accounts_by_owner_json_parsed(owner=wallet_pubkey)
+        logger.info(f"Retrieved token accounts: {token_accounts}")
+
+        if not token_accounts or not token_accounts.value:
+            await update.message.reply_text(
+                f"No token account found for this token in the wallet {display_address}",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Get balance from the first account
+        account = token_accounts.value[0]
+        logger.info(f"First account data: {account}")
+        
+        # Access the parsed data structure correctly
+        token_amount = account.account.data.parsed['info']['tokenAmount']
+        logger.info(f"Token amount data: {token_amount}")
+        
+        balance = int(token_amount['amount'])
+        decimals = token_amount['decimals']
+        actual_balance = balance / (10 ** decimals)
+        logger.info(f"Calculated balance: {actual_balance} (raw: {balance}, decimals: {decimals})")
+
+        # Get token metadata using RPC directly
+        try:
+            logger.info("Fetching token metadata...")
+            # Get token metadata from the RPC
+            token_metadata = solana_client.get_account_info_json_parsed(Pubkey.from_string(token_mint))
+            logger.info(f"Raw token metadata response: {token_metadata}")
+            
+            if token_metadata and token_metadata.value:
+                logger.info(f"Token metadata value: {token_metadata.value}")
+                logger.info(f"Token metadata parsed data: {token_metadata.value.data.parsed}")
+                
+                mint_data = token_metadata.value.data.parsed
+                logger.info(f"Mint data: {mint_data}")
+                
+                # Find the tokenMetadata extension
+                token_metadata_ext = next((ext for ext in mint_data['info']['extensions'] 
+                                            if ext['extension'] == 'tokenMetadata'), None)
+                
+                if token_metadata_ext:
+                    token_name = token_metadata_ext['state'].get('name', 'Unknown Token')
+                    token_symbol = token_metadata_ext['state'].get('symbol', '???')
+                    logger.info(f"Extracted token name: {token_name}, symbol: {token_symbol}")
+                else:
+                    logger.warning("No tokenMetadata extension found")
+                    token_name = 'Unknown Token'
+                    token_symbol = '???'
+            else:
+                logger.warning("No token metadata found in response")
+                token_name = 'Unknown Token'
+                token_symbol = '???'
+        except Exception as e:
+            logger.error(f"Error fetching token metadata: {str(e)}")
+            logger.error(f"Full error traceback: {traceback.format_exc()}")
+            token_name = 'Unknown Token'
+            token_symbol = '???'
+
+        await update.message.reply_text(
+            f"💰 <b>Token Balance</b>\n\n"
+            f"Wallet: {display_address}\n"
+            f"Token: {token_name} ({token_symbol})\n"
+            f"Balance: {actual_balance:,.{decimals}f} {token_symbol}\n"
+            f"Mint: {token_mint[:4]}...{token_mint[-4:]}",
+            parse_mode=ParseMode.HTML
+        )
+
+    except Exception as e:
+        logger.error(f"Error checking balance: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+        await update.message.reply_text(
+            "❌ Error checking balance. Please verify the addresses and try again.",
+            parse_mode=ParseMode.HTML
+        )
+
 def main():
     """Start the bot."""
     try:
@@ -1029,6 +1198,7 @@ def main():
         application.add_handler(CommandHandler("reject_member", reject_member))
         application.add_handler(CommandHandler("list_requests", list_requests))
         application.add_handler(CommandHandler("learn_from_url", learn_from_url))
+        application.add_handler(CommandHandler("balance", check_balance))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # Start the Bot
