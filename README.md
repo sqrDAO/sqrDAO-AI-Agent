@@ -10,7 +10,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 
 ## Features
 
-- 🤖 AI-powered conversations using Gemini 1.5 Pro
+- 🤖 AI-powered conversations using Gemini 2.0 Flash
 - 💬 Context-aware responses
 - 🔒 Member-only access control
 - 📚 Knowledge base management
