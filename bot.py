@@ -373,7 +373,7 @@ try:
     ]
 
     model = genai.GenerativeModel(
-        model_name='models/gemini-1.5-pro-latest',
+        model_name='models/gemini-2.0-flash',
         generation_config=generation_config,
         safety_settings=safety_settings
     )
