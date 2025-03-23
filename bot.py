@@ -730,11 +730,18 @@ async def set_bot_commands(application):
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /about command."""
     knowledge = db.get_knowledge("sqrdao")
-    about_text = "About sqrDAO:\n\n"
+    about_text = "<b>About sqrDAO:</b>\n\n"
     if knowledge:
         about_text += knowledge[0][0]
     else:
-        about_text = "sqrDAO is a decentralized autonomous organization focused on innovative blockchain solutions and research."
+        about_text = "sqrDAO is a Web3 builders-driven community in Vietnam and Southeast Asia, created by and for crypto builders. We connect and empower both technical and non-technical builders to collaborate, explore new ideas, and BUIDL together."
+    
+    about_text += "\n\n<b>About sqrFUND:</b>\n\n"
+    knowledge = db.get_knowledge("sqrfund")
+    if knowledge:
+        about_text += knowledge[0][0]
+    else:
+        about_text += "sqrFUND, incubated by sqrDAO, is a Web3 + AI development DAO that combines Web3 builders' expertise with AI-powered data analytics to create intelligent DeFAI trading and market analysis agents."
     await update.message.reply_text(about_text, parse_mode=ParseMode.HTML)
 
 async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -743,7 +750,7 @@ async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if knowledge:
         website_text = knowledge[0][0]
     else:
-        website_text = "Visit sqrDAO at https://sqrdao.com"
+        website_text = "Visit sqrDAO at https://sqrdao.com or sqrFUND at https://sqrfund.ai"
     await update.message.reply_text(website_text, parse_mode=ParseMode.HTML)
 
 async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
