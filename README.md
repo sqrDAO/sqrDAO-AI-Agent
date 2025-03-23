@@ -18,6 +18,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - 🧠 Conversation memory
 - 📝 Bulk learning from CSV files
 - 👥 Member request system
+- 💰 **Solana Balance Check** - Check the Solana balance using wallet address or .sol DID leveraging SNS.ID
 
 ## Setting Up the Bot on Telegram
 
@@ -86,8 +87,10 @@ To set up Google Custom Search Engine (CSE) for your bot, follow these steps:
 - `/about` - Learn about sqrDAO
 - `/website` - Get sqrDAO's website
 - `/contact` - Get contact information
-- `/events` - View sqrDAO events calendar
+- `/events` - View sqrDAO events
 - `/request_member` - Request to become a member
+- `/balance <wallet_address>` - Check specific wallet's Solana balance
+- `/balance <sns_id>` - Check balance using .sol DID (e.g., username.sol)
 
 ### Member Commands
 Members have access to:
@@ -135,10 +138,26 @@ python bot.py
 ## Features in Detail
 
 ### AI Conversations
-- Powered by Google's Gemini 1.5 Pro model
+- Powered by Google's Gemini 2.0 Flash model
 - Context-aware responses using conversation history
 - Markdown formatting support
 - HTML formatting for Telegram messages
+- Enhanced response formatting with HTML tags
+- Works in both private chats and group chats
+- Responds to mentions in group chats
+- Maintains context separately for each user
+- Handles group chat permissions appropriately
+
+### Balance Check
+- Check Solana wallet balances using wallet addresses
+- Support for .sol DID resolution using SNS.ID
+- Works in both private and group chats
+- Automatic wallet address validation
+- Real-time balance updates
+- User-friendly error messages
+- Support for checking own balance in private chat
+- Support for checking specific wallet balances
+- Support for checking balances using .sol DIDs
 
 ### Knowledge Base
 - SQLite database for storing information
@@ -152,8 +171,9 @@ python bot.py
   - Regular members: Access to resources
   - Authorized members: Full access including knowledge base management and member approval
 - Member request system with approval workflow
-- Username-based verification
-- Members stored in knowledge base
+- User ID and username-based verification
+- Members stored in knowledge base with user IDs
+- Automatic command menu updates for members
 
 ### Conversation Memory
 - Stores conversation history in SQLite
@@ -164,6 +184,11 @@ python bot.py
 - Google Custom Search integration
 - Web content extraction
 - URL processing and content summarization
+- Automatic delimiter detection for CSV files
+- Enhanced error handling and reporting
+- Works in both private and group chats
+- Respects group chat permissions
+- Provides formatted responses suitable for group discussions
 
 ### Bulk Learning
 - CSV file support for adding multiple entries
