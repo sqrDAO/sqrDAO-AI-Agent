@@ -512,7 +512,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /website - Get sqrDAO's website
 • /contact - Get contact information
 • /events - View sqrDAO events
-• /balance - Check Solana token balance
+• /balance - Check $SQR token balance
 • /request_member - Request to become a member
 """
 
@@ -578,99 +578,120 @@ def process_message_with_context(message, context):
         return "I encountered an error while processing your message. Please try again."
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming messages and generate responses using Gemini."""
-    user_message = update.message.text
-    chat_id = update.message.chat_id
-    
-    # Check if the message is a command
-    if user_message.startswith('/'):
-        await update.message.reply_text(
-            "<i>Please use specific commands like /help, or send a regular message.</i>",
-            parse_mode=ParseMode.HTML
-        )
-        return
+    """Handle incoming messages."""
+    try:
+        message = update.message
+        if not message or not message.text:
+            return
 
-    # Check if the message mentions the bot
-    if context.bot.username in user_message:
-        # Process the message as a normal user message
-        user_message = user_message.replace(f"@{context.bot.username}", "").strip()
-        
-        if not user_message:
-            await update.message.reply_text(
-                "<i>I couldn't process an empty message. Please send some text.</i>",
+        # Check for scammer accusations in any chat
+        if "scammer" in message.text.lower():
+            await message.reply_text("🚫 Rome wasn't built in one day! Building something meaningful takes time and dedication. Let's support our founders who are working hard to create value! 💪")
+            return
+
+        # Check if the message is a command
+        if message.text.startswith('/'):
+            await message.reply_text(
+                "<i>Please use specific commands like /help, or send a regular message.</i>",
                 parse_mode=ParseMode.HTML
             )
             return
-        
-        # Get relevant context from previous conversations
-        relevant_context = db.get_relevant_context(update.effective_user.id, user_message)
-        
-        # Process the message with context
-        response = process_message_with_context(user_message, relevant_context)
-        
-        # Store the conversation
-        db.store_conversation(update.effective_user.id, user_message, response)
-        
-        # Format and send response with HTML formatting
-        formatted_text = format_response_for_telegram(response)
-        
-        logger.debug(f"Formatted response: {formatted_text}")
-        
-        await update.message.reply_text(
-            formatted_text,
-            parse_mode=ParseMode.HTML
-        )
-        return
 
-    # Check if this is a template request
-    if user_message.lower().strip() == "template":
-        try:
-            with open('template.csv', 'rb') as template_file:
-                await update.message.reply_document(
-                    document=template_file,
-                    filename='sqrdao_knowledge_template.csv',
-                    caption="📝 Here's a template CSV file for bulk learning.\n\n"
-                           "The file includes:\n"
-                           "• Example entries\n"
-                           "• Format rules\n"
-                           "• Character limits\n"
-                           "• Supported delimiters\n\n"
-                           "Fill in your entries and send the file back to me!"
-                )
+        # For group chats, ignore all other messages
+        if message.chat.type != 'private':
             return
-        except Exception as e:
-            logger.error(f"Error sending template: {str(e)}")
-            await update.message.reply_text(
-                "❌ Sorry, I couldn't send the template file. Please try again later."
+
+        # Only process conversational features in private chats
+        # Check if the message mentions the bot
+        if context.bot.username in message.text:
+            # Process the message as a normal user message
+            message.text = message.text.replace(f"@{context.bot.username}", "").strip()
+            
+            if not message.text:
+                await message.reply_text(
+                    "<i>I couldn't process an empty message. Please send some text.</i>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            # Get relevant context from previous conversations
+            relevant_context = db.get_relevant_context(update.effective_user.id, message.text)
+            
+            # Process the message with context
+            response = process_message_with_context(message.text, relevant_context)
+            
+            # Store the conversation
+            db.store_conversation(update.effective_user.id, message.text, response)
+            
+            # Format and send response with HTML formatting
+            formatted_text = format_response_for_telegram(response)
+            
+            logger.debug(f"Formatted response: {formatted_text}")
+            
+            await message.reply_text(
+                formatted_text,
+                parse_mode=ParseMode.HTML
             )
             return
+
+        # Check if this is a template request
+        if message.text.lower().strip() == "template":
+            try:
+                with open('template.csv', 'rb') as template_file:
+                    await message.reply_document(
+                        document=template_file,
+                        filename='sqrdao_knowledge_template.csv',
+                        caption="📝 Here's a template CSV file for bulk learning.\n\n"
+                               "The file includes:\n"
+                               "• Example entries\n"
+                               "• Format rules\n"
+                               "• Character limits\n"
+                               "• Supported delimiters\n\n"
+                               "Fill in your entries and send the file back to me!"
+                    )
+                return
+            except Exception as e:
+                logger.error(f"Error sending template: {str(e)}")
+                await message.reply_text(
+                    "❌ Sorry, I couldn't send the template file. Please try again later."
+                )
+                return
         
-    try:
-        # Get relevant context from previous conversations
-        relevant_context = db.get_relevant_context(update.effective_user.id, user_message)
-        
-        # Process the message with context
-        response = process_message_with_context(user_message, relevant_context)
-        
-        # Store the conversation
-        db.store_conversation(update.effective_user.id, user_message, response)
-        
-        # Format and send response with HTML formatting
-        formatted_text = format_response_for_telegram(response)
-        
-        logger.debug(f"Formatted response: {formatted_text}")
-        
-        await update.message.reply_text(
-            formatted_text,
-            parse_mode=ParseMode.HTML
-        )
-        
+        try:
+            # Get relevant context from previous conversations
+            relevant_context = db.get_relevant_context(update.effective_user.id, message.text)
+            
+            # Process the message with context
+            response = process_message_with_context(message.text, relevant_context)
+            
+            # Store the conversation
+            db.store_conversation(update.effective_user.id, message.text, response)
+            
+            # Format and send response with HTML formatting
+            formatted_text = format_response_for_telegram(response)
+            
+            logger.debug(f"Formatted response: {formatted_text}")
+            
+            await message.reply_text(
+                formatted_text,
+                parse_mode=ParseMode.HTML
+            )
+            
+        except Exception as e:
+            logger.error(f"Error processing message: {str(e)}")
+            await message.reply_text(
+                "<i>I encountered an error while processing your message. Please try again.</i>",
+                parse_mode=ParseMode.HTML
+            )
+
     except Exception as e:
-        logger.error(f"Error processing message: {str(e)}")
-        await update.message.reply_text(
-            "<i>I encountered an error while processing your message. Please try again.</i>",
-            parse_mode=ParseMode.HTML
-        )
+        logger.error(f"Error handling message: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+        if message.chat.type == 'private':  # Only send error messages in private chats
+            await message.reply_text(
+                "<i>I encountered an error while processing your message. Please try again.</i>",
+                parse_mode=ParseMode.HTML
+            )
 
 async def set_bot_commands(application):
     """Set bot commands with descriptions for the command menu."""
@@ -1034,7 +1055,7 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Please provide the wallet address or SNS domain.\n"
             "Usage: /balance [wallet_address or sns_domain]\n"
             "Examples:\n"
-            "• /balance 5vJRzKtcp4fJxqmR7qzajkGNF9dqQk49TPhWXLDZAJf6\n"
+            "• /balance 2uWgfTebL5xfhFPJwguVuRfidgUAvjUX1vZRepZgZym9\n"
             "• /balance castelian.sol",
             parse_mode=ParseMode.HTML
         )
