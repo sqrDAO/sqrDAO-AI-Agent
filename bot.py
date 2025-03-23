@@ -486,10 +486,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 <b>Hello!</b> I'm your AI assistant powered by Gemini, developed by sqrFUND. "
         "You can ask me anything, and I'll do my best to help you!\n\n"
         "I can:\n"
-        "• Answer your questions about sqrDAO\n"
-        "• Provide information about our platform\n"
+        "• Answer your questions about sqrDAO and sqrFUND\n"
+        "• Provide information about us\n"
         "• Help with general inquiries\n"
-        "• Assist with platform-related questions\n\n"
+        "• Assist with sqrDAO- and sqrFUND-related questions\n\n"
         "Just send me a message or use /help to see available commands!"
     )
     await update.message.reply_text(welcome_message, parse_mode=ParseMode.HTML)
@@ -508,8 +508,8 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 <b>Available Commands:</b>
 • /start - Start the bot and get welcome message
 • /help - Show help and list of available commands
-• /about - Learn about sqrDAO
-• /website - Get sqrDAO's website
+• /about - Learn about sqrDAO and sqrFUND
+• /website - Get sqrDAO's and sqrFUND's website
 • /contact - Get contact information
 • /events - View sqrDAO events
 • /balance - Check $SQR token balance
@@ -757,6 +757,7 @@ async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         website_text += "\n\n" + knowledge[0][0]
     else:
         website_text += "\n\nVisit sqrFUND at https://sqrfund.ai"
+
     await update.message.reply_text(website_text, parse_mode=ParseMode.HTML)
 
 async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1077,7 +1078,7 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     input_address = context.args[0]
-    token_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"  # Hardcoded mint address for SQR
+    token_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"  # Hardcoded mint address for $SQR token
     
     # Check if input is an SNS domain
     wallet_address = None
