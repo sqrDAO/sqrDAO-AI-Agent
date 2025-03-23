@@ -750,7 +750,13 @@ async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if knowledge:
         website_text = knowledge[0][0]
     else:
-        website_text = "Visit sqrDAO at https://sqrdao.com or sqrFUND at https://sqrfund.ai"
+        website_text = "Visit sqrDAO at https://sqrdao.com"
+
+    knowledge = db.get_knowledge("sqrfund")
+    if knowledge:
+        website_text += "\n\n" + knowledge[0][0]
+    else:
+        website_text += "\n\nVisit sqrFUND at https://sqrfund.ai"
     await update.message.reply_text(website_text, parse_mode=ParseMode.HTML)
 
 async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
