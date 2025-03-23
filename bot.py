@@ -793,14 +793,15 @@ Stay updated with our latest events, workshops, and community gatherings!
 async def resources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /resources command - Available to all members."""
     resources_text = """
-<b>sqrDAO Members' Resources</b>
+<b>sqrDAO Members' and sqrFUND Chads' Resources</b>
 
 Here are our internal resources:
 • <b>GitHub:</b> https://github.com/sqrdao
 • <b>AWS Credits Guide:</b> https://drive.google.com/file/d/12DjM2P5x0T_koLI6o_UMXMo_LUJpYrXL/view?usp=sharing
 • <b>AWS Org ID ($10K):</b> 3Ehcy
 • <b>Legal Service (20% off):</b> https://teamoutlaw.io/
-• <b>SqrDAO Brand Kit:</b> https://sqrdao.notion.site/sqrdao-brand-kit
+• <b>sqrDAO & sqrFUND Brand Kit:</b> https://sqrdao.notion.site/sqrdao-brand-kit
+• <b>$SQR CHADS TG group:</b> https://t.me/+Yh6VkC81BdljZDg1
 
 For access issues, please contact @DarthCastelian.
 """
