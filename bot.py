@@ -539,7 +539,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 <b>Features:</b>
 • I remember our conversations and use them for context
 • I provide detailed responses using my knowledge base
-• I can help you with information about sqrDAO
+• I can help you with information about sqrDAO and sqrFUND
 
 Just send me a message or use any command to get started!
 """
@@ -701,12 +701,12 @@ async def set_bot_commands(application):
     basic_commands = [
         ("start", "Start the bot and get welcome message"),
         ("help", "Show help and list of available commands"),
-        ("about", "Learn about sqrDAO"),
-        ("website", "Get sqrDAO's website"),
+        ("about", "Learn about sqrDAO and sqrFUND"),
+        ("website", "Get sqrDAO's and sqrFUND's website"),
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
-        ("balance", "Check Solana token balance"),  # Added balance command
-        ("request_member", "Request to become a member")
+        ("balance", "Check $SQR token balance"),  # Added balance command
+        ("request_member", "Request to become a sqrDAO member")
     ]
     
     # Commands for regular members
@@ -765,10 +765,15 @@ async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact_text = """
 <b>Contact Information</b>
 
-Get in touch with us:
+Get in touch with sqrDAO:
 • Email: gm@sqrdao.com
 • X (Twitter): @sqrdao
 • Website: https://sqrdao.com
+
+Get in touch with sqrFUND:
+• Email: dev@sqrfund.ai
+• X (Twitter): @sqrfund_ai
+• Website: https://sqrfund.ai
 """
     await update.message.reply_text(contact_text, parse_mode=ParseMode.HTML)
 
