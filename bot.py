@@ -514,6 +514,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /events - View sqrDAO events
 • /balance - Check $SQR token balance
 • /request_member - Request to become a member
+
 """
 
     if is_authorized or is_regular_member:
@@ -531,6 +532,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /approve_member - Approve a member request
 • /reject_member - Reject a member request
 • /list_requests - View pending member requests
+• /list_members - List all current members
 """
 
     help_text += """
@@ -1187,6 +1189,22 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
+@is_member
+async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /list_members command - List all members."""
+    if not MEMBERS:
+        await update.message.reply_text(
+            "📝 No members found.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    members_text = "<b>Current Members:</b>\n\n"
+    for member in MEMBERS:
+        members_text += f"• @{member['username']} (User ID: {member['user_id']})\n"
+    
+    await update.message.reply_text(members_text, parse_mode=ParseMode.HTML)
+
 def main():
     """Start the bot."""
     try:
@@ -1220,6 +1238,7 @@ def main():
         application.add_handler(CommandHandler("list_requests", list_requests))
         application.add_handler(CommandHandler("learn_from_url", learn_from_url))
         application.add_handler(CommandHandler("balance", check_balance))
+        application.add_handler(CommandHandler("list_members", list_members))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # Start the Bot
