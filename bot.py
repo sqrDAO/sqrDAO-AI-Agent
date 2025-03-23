@@ -520,7 +520,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
     if is_authorized or is_regular_member:
         help_text += """
 <b>Member Commands:</b>
-• /resources - Access internal resources
+• /resources - Access internal resources for sqrDAO Members and sqrFUND Chads
 """
 
     if is_authorized:
@@ -711,7 +711,7 @@ async def set_bot_commands(application):
     
     # Commands for regular members
     member_commands = basic_commands + [
-        ("resources", "Access internal resources")
+        ("resources", "Access internal resources for sqrDAO Members and sqrFUND Chads")
     ]
     
     # Set basic commands for all users
