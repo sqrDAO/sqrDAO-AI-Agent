@@ -25,6 +25,7 @@ from solana.rpc.api import Client
 from spl.token.client import Token
 import base58
 from solders.keypair import Keypair
+from telegram.ext import ChatMemberHandler
 
 # SNS resolution function
 async def resolve_sns_domain(domain: str) -> str:
@@ -66,6 +67,9 @@ bot_id = None
 # Add these constants after other API configurations
 SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
 solana_client = Client(SOLANA_RPC_URL)
+
+# Add this to the global variables section, after MEMBERS declaration
+GROUP_MEMBERS = []  # Store groups where the bot is a member
 
 def load_members_from_knowledge():
     """Load regular members from the knowledge base and authorized members from config.json."""
@@ -110,6 +114,32 @@ def save_members_to_knowledge():
         logger.info("Successfully saved regular members to knowledge base")
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
+
+def load_groups_from_knowledge():
+    """Load groups from the knowledge base."""
+    global GROUP_MEMBERS
+    try:
+        # Check if groups are stored in the knowledge base
+        groups_knowledge = db.get_knowledge("bot_groups")
+        if groups_knowledge:
+            GROUP_MEMBERS = json.loads(groups_knowledge[0][0])
+            logger.info(f"Loaded {len(GROUP_MEMBERS)} groups from knowledge base")
+        else:
+            GROUP_MEMBERS = []
+            logger.info("No groups found in knowledge base")
+    except Exception as e:
+        logger.error(f"Error loading groups: {str(e)}")
+        logger.error("Falling back to empty groups list")
+        GROUP_MEMBERS = []
+
+def save_groups_to_knowledge():
+    """Save groups to the knowledge base."""
+    try:
+        # Save groups
+        db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
+        logger.info("Successfully saved groups to knowledge base")
+    except Exception as e:
+        logger.error(f"Error saving groups to knowledge base: {str(e)}")
 
 class Database:
     def __init__(self):
@@ -486,10 +516,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 <b>Hello!</b> I'm your AI assistant powered by Gemini, developed by sqrFUND. "
         "You can ask me anything, and I'll do my best to help you!\n\n"
         "I can:\n"
-        "• Answer your questions about sqrDAO\n"
-        "• Provide information about our platform\n"
+        "• Answer your questions about sqrDAO and sqrFUND\n"
+        "• Provide information about us\n"
         "• Help with general inquiries\n"
-        "• Assist with platform-related questions\n\n"
+        "• Assist with sqrDAO- and sqrFUND-related questions\n\n"
         "Just send me a message or use /help to see available commands!"
     )
     await update.message.reply_text(welcome_message, parse_mode=ParseMode.HTML)
@@ -508,18 +538,19 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 <b>Available Commands:</b>
 • /start - Start the bot and get welcome message
 • /help - Show help and list of available commands
-• /about - Learn about sqrDAO
-• /website - Get sqrDAO's website
+• /about - Learn about sqrDAO and sqrFUND
+• /website - Get sqrDAO's and sqrFUND's website
 • /contact - Get contact information
 • /events - View sqrDAO events
 • /balance - Check $SQR token balance
 • /request_member - Request to become a member
+
 """
 
     if is_authorized or is_regular_member:
         help_text += """
 <b>Member Commands:</b>
-• /resources - Access internal resources
+• /resources - Access internal resources for sqrDAO Members and sqrFUND Chads
 """
 
     if is_authorized:
@@ -531,13 +562,15 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /approve_member - Approve a member request
 • /reject_member - Reject a member request
 • /list_requests - View pending member requests
+• /list_members - List all current members
+• /mass_message - Send a message to all users and groups
 """
 
     help_text += """
 <b>Features:</b>
 • I remember our conversations and use them for context
 • I provide detailed responses using my knowledge base
-• I can help you with information about sqrDAO
+• I can help you with information about sqrDAO and sqrFUND
 
 Just send me a message or use any command to get started!
 """
@@ -699,17 +732,17 @@ async def set_bot_commands(application):
     basic_commands = [
         ("start", "Start the bot and get welcome message"),
         ("help", "Show help and list of available commands"),
-        ("about", "Learn about sqrDAO"),
-        ("website", "Get sqrDAO's website"),
+        ("about", "Learn about sqrDAO and sqrFUND"),
+        ("website", "Get sqrDAO's and sqrFUND's website"),
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
-        ("balance", "Check Solana token balance"),  # Added balance command
-        ("request_member", "Request to become a member")
+        ("balance", "Check $SQR token balance"),  # Added balance command
+        ("request_member", "Request to become a sqrDAO member")
     ]
     
     # Commands for regular members
     member_commands = basic_commands + [
-        ("resources", "Access internal resources")
+        ("resources", "Access internal resources for sqrDAO Members and sqrFUND Chads")
     ]
     
     # Set basic commands for all users
@@ -728,11 +761,18 @@ async def set_bot_commands(application):
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /about command."""
     knowledge = db.get_knowledge("sqrdao")
-    about_text = "About sqrDAO:\n\n"
+    about_text = "<b>About sqrDAO:</b>\n\n"
     if knowledge:
         about_text += knowledge[0][0]
     else:
-        about_text = "sqrDAO is a decentralized autonomous organization focused on innovative blockchain solutions and research."
+        about_text = "sqrDAO is a Web3 builders-driven community in Vietnam and Southeast Asia, created by and for crypto builders. We connect and empower both technical and non-technical builders to collaborate, explore new ideas, and BUIDL together."
+    
+    about_text += "\n\n<b>About sqrFUND:</b>\n\n"
+    knowledge = db.get_knowledge("sqrfund")
+    if knowledge:
+        about_text += knowledge[0][0]
+    else:
+        about_text += "sqrFUND, incubated by sqrDAO, is a Web3 + AI development DAO that combines Web3 builders' expertise with AI-powered data analytics to create intelligent DeFAI trading and market analysis agents."
     await update.message.reply_text(about_text, parse_mode=ParseMode.HTML)
 
 async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -742,6 +782,13 @@ async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         website_text = knowledge[0][0]
     else:
         website_text = "Visit sqrDAO at https://sqrdao.com"
+
+    knowledge = db.get_knowledge("sqrfund")
+    if knowledge:
+        website_text += "\n\n" + knowledge[0][0]
+    else:
+        website_text += "\n\nVisit sqrFUND at https://sqrfund.ai"
+
     await update.message.reply_text(website_text, parse_mode=ParseMode.HTML)
 
 async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -749,12 +796,66 @@ async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact_text = """
 <b>Contact Information</b>
 
-Get in touch with us:
+Get in touch with sqrDAO:
 • Email: gm@sqrdao.com
 • X (Twitter): @sqrdao
 • Website: https://sqrdao.com
+
+Get in touch with sqrFUND:
+• Email: dev@sqrfund.ai
+• X (Twitter): @sqrfund_ai
+• Website: https://sqrfund.ai
 """
     await update.message.reply_text(contact_text, parse_mode=ParseMode.HTML)
+
+async def get_sqr_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get information about SQR token including prices from GeckoTerminal."""
+    try:
+        # SQR token address on Solana
+        token_address = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX" # Can be changed to other token address
+        
+        # GeckoTerminal API endpoint for token info
+        url = f"https://api.geckoterminal.com/api/v2/networks/solana/tokens/{token_address}"
+        
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            token_data = data.get('data', {}).get('attributes', {})
+            
+            # Extract relevant information
+            price_usd = token_data.get('price_usd', 'N/A')
+            price_change_24h = token_data.get('price_change_24h', 'N/A')
+            volume_24h = token_data.get('volume_24h', 'N/A')
+            market_cap = token_data.get('market_cap_usd', 'N/A')
+            
+            # Format numeric values if they exist
+            try:
+                volume_24h = f"${float(volume_24h):,.2f}" if volume_24h != 'N/A' else 'N/A'
+            except (ValueError, TypeError):
+                volume_24h = 'N/A'
+                
+            try:
+                market_cap = f"${float(market_cap):,.2f}" if market_cap != 'N/A' else 'N/A'
+            except (ValueError, TypeError):
+                market_cap = 'N/A'
+            
+            # Format the message
+            message = (
+                "🪙 *SQR Token Information*\n\n"
+                f"💰 Price: ${price_usd}\n"
+                f"📈 24h Change: {price_change_24h}%\n"
+                f"📊 24h Volume: {volume_24h}\n"
+                f"💎 Market Cap: {market_cap}\n\n"
+                "Data provided by GeckoTerminal"
+            )
+            
+            await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+        else:
+            await update.message.reply_text("❌ Sorry, I couldn't fetch SQR token information at the moment. Please try again later.")
+            
+    except Exception as e:
+        logging.error(f"Error fetching SQR info: {str(e)}")
+        await update.message.reply_text("❌ An error occurred while fetching SQR token information. Please try again later.")
 
 async def events_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /events command."""
@@ -772,14 +873,15 @@ Stay updated with our latest events, workshops, and community gatherings!
 async def resources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /resources command - Available to all members."""
     resources_text = """
-<b>sqrDAO Members' Resources</b>
+<b>sqrDAO Members' and sqrFUND Chads' Resources</b>
 
 Here are our internal resources:
 • <b>GitHub:</b> https://github.com/sqrdao
 • <b>AWS Credits Guide:</b> https://drive.google.com/file/d/12DjM2P5x0T_koLI6o_UMXMo_LUJpYrXL/view?usp=sharing
 • <b>AWS Org ID ($10K):</b> 3Ehcy
 • <b>Legal Service (20% off):</b> https://teamoutlaw.io/
-• <b>SqrDAO Brand Kit:</b> https://sqrdao.notion.site/sqrdao-brand-kit
+• <b>sqrDAO & sqrFUND Brand Kit:</b> https://sqrdao.notion.site/sqrdao-brand-kit
+• <b>$SQR CHADS TG group:</b> https://t.me/+Yh6VkC81BdljZDg1
 
 For access issues, please contact @DarthCastelian.
 """
@@ -1062,7 +1164,7 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     input_address = context.args[0]
-    token_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"  # Hardcoded mint address for SQR
+    token_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"  # Hardcoded mint address for $SQR token
     
     # Check if input is an SNS domain
     wallet_address = None
@@ -1187,6 +1289,304 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
+@is_member
+async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /list_members command - List all members."""
+    if not MEMBERS:
+        await update.message.reply_text(
+            "📝 No members found.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    members_text = "<b>Current Members:</b>\n\n"
+    for member in MEMBERS:
+        members_text += f"• @{member['username']} (User ID: {member['user_id']})\n"
+    
+    await update.message.reply_text(members_text, parse_mode=ParseMode.HTML)
+
+# Add this handler to detect when bot is added to or removed from groups
+async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Track when bot is added to or removed from a group."""
+    global GROUP_MEMBERS
+    
+    # Check for my_chat_member updates
+    if update.my_chat_member and update.my_chat_member.chat.type in ['group', 'supergroup']:
+        chat = update.my_chat_member.chat
+        old_status = update.my_chat_member.old_chat_member.status if update.my_chat_member.old_chat_member else None
+        new_status = update.my_chat_member.new_chat_member.status if update.my_chat_member.new_chat_member else None
+        
+        logger.info(f"Bot status changed in chat {chat.title} ({chat.id}) from {old_status} to {new_status}")
+        
+        # Bot was added to a group
+        if new_status in ['member', 'administrator'] and old_status in [None, 'left', 'kicked']:
+            # Check if this group is already in our list
+            if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
+                GROUP_MEMBERS.append({
+                    'id': chat.id,
+                    'title': chat.title,
+                    'type': chat.type,
+                    'added_at': datetime.now().isoformat()
+                })
+                logger.info(f"Added new group: {chat.title} ({chat.id})")
+                save_groups_to_knowledge()
+        
+        # Bot was removed from a group
+        elif new_status in ['left', 'kicked'] and old_status in ['member', 'administrator']:
+            # Remove from our list if present
+            GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
+            logger.info(f"Removed group: {chat.title} ({chat.id})")
+            save_groups_to_knowledge()
+    
+    # Also check normal message updates from groups
+    elif update.message and update.message.chat.type in ['group', 'supergroup']:
+        chat = update.message.chat
+        # If this is a group message and the group is not in our list, add it
+        if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
+            GROUP_MEMBERS.append({
+                'id': chat.id,
+                'title': chat.title,
+                'type': chat.type,
+                'added_at': datetime.now().isoformat()
+            })
+            logger.info(f"Added group from message: {chat.title} ({chat.id})")
+            save_groups_to_knowledge()
+
+# Replace the get_bot_groups function with this simpler version
+async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
+    """Get all groups where the bot is a member."""
+    # First check if the current chat is a group and not in our list
+    try:
+        if hasattr(context, 'message') and context.message and context.message.chat:
+            chat = context.message.chat
+            if chat.type in ['group', 'supergroup'] and not any(g['id'] == chat.id for g in GROUP_MEMBERS):
+                logger.info(f"Adding current message chat to groups: {chat.title} ({chat.id})")
+                GROUP_MEMBERS.append({
+                    'id': chat.id,
+                    'title': chat.title,
+                    'type': chat.type,
+                    'added_at': datetime.now().isoformat()
+                })
+                save_groups_to_knowledge()
+    except Exception as e:
+        logger.error(f"Error checking current chat: {str(e)}")
+    
+    logger.info(f"Found {len(GROUP_MEMBERS)} groups in database")
+    return GROUP_MEMBERS
+
+# Add this command to manually add a group
+@is_member
+async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /add_group command - Manually add a group ID."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide a group ID to add.\n"
+            "Usage: /add_group [group_id] [group_name]\n"
+            "Example: /add_group -1001234567890 My Group\n\n"
+            "<b>How to find a group ID:</b>\n"
+            "1. Add @username_to_id_bot to your group\n"
+            "2. Send /id in the group\n"
+            "3. The bot will reply with the group ID\n"
+            "4. Use that ID with this command",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    try:
+        group_id = int(context.args[0])
+        group_name = " ".join(context.args[1:]) if len(context.args) > 1 else f"Group {group_id}"
+        
+        # Check if group already exists
+        if any(g['id'] == group_id for g in GROUP_MEMBERS):
+            await update.message.reply_text(
+                f"⚠️ Group with ID {group_id} is already in the list.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Add the group
+        GROUP_MEMBERS.append({
+            'id': group_id,
+            'title': group_name,
+            'type': 'group',  # Default to group, we don't know if it's a supergroup
+            'added_at': datetime.now().isoformat(),
+            'added_by': update.effective_user.username
+        })
+        save_groups_to_knowledge()
+        
+        await update.message.reply_text(
+            f"✅ Successfully added group: {group_name} ({group_id})",
+            parse_mode=ParseMode.HTML
+        )
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Invalid group ID. Please provide a valid numerical ID.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        logger.error(f"Error adding group: {str(e)}")
+        await update.message.reply_text(
+            f"❌ Error adding group: {str(e)}",
+            parse_mode=ParseMode.HTML
+        )
+
+# Add this command to list all groups
+@is_member
+async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /list_groups command - List all tracked groups."""
+    if not GROUP_MEMBERS:
+        await update.message.reply_text(
+            "📝 No groups found.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    groups_text = "<b>Current Groups:</b>\n\n"
+    for group in GROUP_MEMBERS:
+        added_at = group.get('added_at', 'unknown')
+        added_by = f" (by @{group.get('added_by', 'system')})" if 'added_by' in group else ""
+        groups_text += f"• {group['title']} ({group['id']}) - {group['type']}{added_by}\n"
+    
+    await update.message.reply_text(groups_text, parse_mode=ParseMode.HTML)
+
+# Add this command to remove a group
+@is_member
+async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /remove_group command - Remove a group ID."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide a group ID to remove.\n"
+            "Usage: /remove_group [group_id]\n"
+            "Example: /remove_group -1001234567890\n\n"
+            "Use /list_groups to see all tracked groups.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    try:
+        group_id = int(context.args[0])
+        
+        # Find and remove the group
+        group = next((g for g in GROUP_MEMBERS if g['id'] == group_id), None)
+        if group:
+            GROUP_MEMBERS.remove(group)
+            save_groups_to_knowledge()
+            await update.message.reply_text(
+                f"✅ Successfully removed group: {group['title']} ({group_id})",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text(
+                f"⚠️ No group found with ID {group_id}.",
+                parse_mode=ParseMode.HTML
+            )
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Invalid group ID. Please provide a valid numerical ID.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        logger.error(f"Error removing group: {str(e)}")
+        await update.message.reply_text(
+            f"❌ Error removing group: {str(e)}",
+            parse_mode=ParseMode.HTML
+        )
+
+@is_member
+async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /mass_message command - Send a message to all regular users and groups."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide a message to send.\n"
+            "Usage: /mass_message [message]\n"
+            "Example: /mass_message Hello everyone! This is an important announcement.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Get the message from arguments
+    message = " ".join(context.args)
+    
+    # Get all regular users (excluding authorized members)
+    valid_users = [user for user in MEMBERS if user.get('user_id')]  # Only regular members
+    
+    # Get all groups where the bot is a member
+    all_groups = await get_bot_groups(context)
+    
+    if not valid_users and not all_groups:
+        await update.message.reply_text(
+            "❌ No valid users or groups found to send the message to.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Send confirmation to the sender
+    await update.message.reply_text(
+        f"📤 Starting to send message to {len(valid_users)} users and {len(all_groups)} groups...",
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Track success and failure counts
+    user_success_count = 0
+    user_failure_count = 0
+    group_success_count = 0
+    group_failure_count = 0
+    failed_users = []
+    failed_groups = []
+    
+    # Send message to each valid user
+    for user in valid_users:
+        try:
+            await context.bot.send_message(
+                chat_id=user['user_id'],
+                text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
+                parse_mode=ParseMode.HTML
+            )
+            user_success_count += 1
+        except Exception as e:
+            user_failure_count += 1
+            failed_users.append(f"@{user['username']}")
+            logger.error(f"Failed to send message to user {user['username']}: {str(e)}")
+    
+    # Send message to each group
+    for group in all_groups:
+        try:
+            await context.bot.send_message(
+                chat_id=group['id'],
+                text=f"📢 <b>Announcement from sqrDAO:</b>\n\n{message}",
+                parse_mode=ParseMode.HTML
+            )
+            group_success_count += 1
+        except Exception as e:
+            group_failure_count += 1
+            failed_groups.append(f"{group['title']} ({group['type']})")
+            logger.error(f"Failed to send message to group {group['title']}: {str(e)}")
+    
+    # Send summary to the sender
+    summary = f"✅ Message delivery complete!\n\n"
+    
+    if failed_users:
+        summary += f"❌ Failed to send to users:\n"
+        summary += "\n".join(f"• {user}" for user in failed_users[:5])  # Show first 5 failed users
+        if len(failed_users) > 5:
+            summary += f"\n... and {len(failed_users) - 5} more users"
+    
+    summary += f"\n\n📊 User Statistics:\n"
+    summary += f"• Successfully sent: {user_success_count}\n"
+    summary += f"• Failed to send: {user_failure_count}\n"
+    
+    summary += f"\n\n📊 Group Statistics:\n"
+    summary += f"• Successfully sent: {group_success_count}\n"
+    summary += f"• Failed to send: {group_failure_count}\n"
+    
+    if failed_groups:
+        summary += f"\n❌ Failed to send to groups:\n"
+        summary += "\n".join(f"• {group}" for group in failed_groups[:5])  # Show first 5 failed groups
+        if len(failed_groups) > 5:
+            summary += f"\n... and {len(failed_groups) - 5} more groups"
+    
+    await update.message.reply_text(summary, parse_mode=ParseMode.HTML)
+
 def main():
     """Start the bot."""
     try:
@@ -1203,6 +1603,7 @@ def main():
 
         # Load members after the application is created
         load_members_from_knowledge()
+        load_groups_from_knowledge()  # Add this line to load groups
 
         # Add handlers
         application.add_handler(CommandHandler("start", start))
@@ -1220,7 +1621,15 @@ def main():
         application.add_handler(CommandHandler("list_requests", list_requests))
         application.add_handler(CommandHandler("learn_from_url", learn_from_url))
         application.add_handler(CommandHandler("balance", check_balance))
+        application.add_handler(CommandHandler("list_members", list_members))
+        application.add_handler(CommandHandler("sqr_info", get_sqr_info_command))
+        application.add_handler(CommandHandler("mass_message", mass_message))
+        application.add_handler(CommandHandler("add_group", add_group))
+        application.add_handler(CommandHandler("list_groups", list_groups))
+        application.add_handler(CommandHandler("remove_group", remove_group))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_group_status))
+        application.add_handler(ChatMemberHandler(handle_group_status))
 
         # Start the Bot
         logger.info("Starting bot...")

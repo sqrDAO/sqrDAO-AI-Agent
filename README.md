@@ -1,6 +1,6 @@
 # sqrDAO AI Agent
 
-A Telegram bot powered by Google's Gemini AI model to assist sqrDAO members and users. Developed and maintained by [sqrFUND](https://sqrfund.ai).
+An AI-powered Telegram bot for sqrDAO, developed by sqrFUND. This bot helps manage the sqrDAO community, provides information about sqrDAO and sqrFUND, and assists with various administrative tasks.
 
 🤖 **Try it now**: [t.me/sqrAgent_bot](https://t.me/sqrAgent_bot)
 
@@ -10,17 +10,87 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 
 ## Features
 
-- 🤖 AI-powered conversations using Gemini 2.0 Flash
-- 💬 Context-aware responses
-- 🔒 Member-only access control
+### Core Features
+- 🤖 AI-powered responses using Google's Gemini model
 - 📚 Knowledge base management
-- 🌐 Web search capabilities
-- 🧠 Conversation memory
-- 📝 Bulk learning from CSV files
-- 👥 Member request system
-- 💰 **Solana Balance Check** - Check the Solana balance using wallet address or .sol DID leveraging SNS.ID
+- 👥 Member management system
+- 💬 Group chat support
+- 🔍 Web search capabilities
+- 💰 SQR token balance checking
+- 📢 Mass messaging system
 
-## Setting Up the Bot on Telegram
+### Member Management
+- Member request system
+- Member approval/rejection workflow
+- Different access levels (Authorized Members and Regular Members)
+- Member-only resources and commands
+
+### Group Management
+- Automatic group detection when bot is added/removed
+- Manual group management commands
+- Group tracking and persistence
+- Mass messaging to groups
+
+## Commands
+
+### Basic Commands (All Users)
+- `/start` - Start the bot and get welcome message
+- `/help` - Show help and list of available commands
+- `/about` - Learn about sqrDAO and sqrFUND
+- `/website` - Get sqrDAO's and sqrFUND's website
+- `/contact` - Get contact information
+- `/events` - View sqrDAO events
+- `/balance` - Check $SQR token balance
+- `/request_member` - Request to become a member
+
+### Member Commands
+- `/resources` - Access internal resources for sqrDAO Members and sqrFUND Chads
+
+### Authorized Member Commands
+- `/learn` - Add information to the bot's knowledge base
+- `/learn_from_url` - Learn from a web page by providing a URL
+- `/bulk_learn` - Add multiple entries from CSV file
+- `/approve_member` - Approve a member request
+- `/reject_member` - Reject a member request
+- `/list_requests` - View pending member requests
+- `/list_members` - List all current members
+- `/mass_message` - Send a message to all regular members and groups
+- `/add_group` - Manually add a group to the bot's tracking
+- `/list_groups` - List all tracked groups
+- `/remove_group` - Remove a group from tracking
+
+## Group Management
+
+### Automatic Group Detection
+The bot automatically detects and tracks groups when:
+- It is added to a new group
+- It receives messages from a group
+- It is removed from a group
+
+### Manual Group Management
+Authorized members can manage groups using the following commands:
+- `/add_group [group_id] [group_name]` - Add a group manually
+- `/list_groups` - View all tracked groups
+- `/remove_group [group_id]` - Remove a group from tracking
+
+### Finding Group IDs
+To find a group ID:
+1. Add @username_to_id_bot to your group
+2. Send `/id` in the group
+3. Use the provided ID with the `/add_group` command
+
+## Mass Messaging
+
+The `/mass_message` command has been updated to:
+- Send messages to regular members only (excluding authorized members)
+- Send messages to all tracked groups
+- Provide detailed delivery statistics
+- Show failed message attempts
+- Include proper error handling and logging
+
+## Setup
+
+### Setting Up the Bot on Telegram
 
 To set up your bot on Telegram, follow these steps:
 
@@ -43,9 +113,7 @@ To set up your bot on Telegram, follow these steps:
    TELEGRAM_BOT_TOKEN=your_telegram_bot_token
    ```
 
-6. **Configure Your Bot**: Follow the remaining setup instructions in the README to install dependencies and run your bot.
-
-## Setting Up Google Custom Search Engine
+### Setting Up Google Custom Search Engine
 
 To set up Google Custom Search Engine (CSE) for your bot, follow these steps:
 
@@ -79,35 +147,7 @@ To set up Google Custom Search Engine (CSE) for your bot, follow these steps:
    GOOGLE_CSE_ID=your_google_cse_id
    ```
 
-## Commands
-
-### Public Commands
-- `/start` - Start the bot and get welcome message
-- `/help` - Show help and list of available commands
-- `/about` - Learn about sqrDAO
-- `/website` - Get sqrDAO's website
-- `/contact` - Get contact information
-- `/events` - View sqrDAO events
-- `/request_member` - Request to become a member
-- `/balance <wallet_address>` - Check specific wallet's Solana balance
-- `/balance <sns_id>` - Check balance using .sol DID (e.g., username.sol)
-
-### Member Commands
-Members have access to:
-- All public commands
-- `/resources` - Access internal resources and documentation
-
-### Authorized Member Commands
-Authorized members have access to:
-- All public and member commands
-- `/learn` - Add information to the bot's knowledge base
-- `/bulk_learn` - Add multiple entries from CSV file
-- `/learn_from_url` - Learn from a web page by providing a URL
-- `/approve_member` - Approve a member request
-- `/reject_member` - Reject a member request
-- `/list_requests` - View pending member requests
-
-## Setup
+### Installing and Running the Bot
 
 1. Clone the repository:
 ```bash
@@ -122,12 +162,13 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file with your API keys:
+3. Create a `.env` file with all required variables:
 ```
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_BOT_TOKEN=your_bot_token
 GEMINI_API_KEY=your_gemini_api_key
 GOOGLE_API_KEY=your_google_api_key
 GOOGLE_CSE_ID=your_google_cse_id
+SOLANA_RPC_URL=your_solana_rpc_url
 ```
 
 4. Run the bot:
