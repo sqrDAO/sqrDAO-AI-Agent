@@ -1553,7 +1553,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=group['id'],
-                text=f"📢 <b>Announcement from sqrDAO:</b>\n\n{message}",
+                text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
                 parse_mode=ParseMode.HTML
             )
             group_success_count += 1

@@ -176,6 +176,36 @@ SOLANA_RPC_URL=your_solana_rpc_url
 python bot.py
 ```
 
+### Viewing Logs on the VM
+
+To view the logs for your bot running on a Virtual Machine (VM), you can use the `journalctl` command. This command allows you to see logs in real-time.
+
+#### Instructions
+
+1. **Access Your VM**: Use SSH or a remote desktop connection to log into your VM.
+
+2. **Use the `journalctl` Command**: To view logs for your specific service, run the following command:
+
+   ```bash
+   journalctl -u my_service -f
+   ```
+
+   Replace `my_service` with the actual name of your service.
+
+3. **Real-Time Log Monitoring**: The `-f` option will follow the logs, meaning you will see new log entries as they are written.
+
+4. **Exit the Log View**: To stop following the logs, press `Ctrl + C`.
+
+### Example Command
+
+Here’s a complete example command to follow logs for a service named `sqrdao-bot`:
+
+```bash
+journalctl -u sqrdao-bot -f
+```
+
+This command will display the logs for `sqrdao-bot` and update in real-time as new log entries are added.
+
 ## Features in Detail
 
 ### AI Conversations
@@ -281,6 +311,14 @@ Core dependencies:
 - `python-telegram-bot` - Telegram bot functionality
 - `requests` - HTTP requests
 - `trafilatura` - Web content extraction
+- `google-auth` - Google authentication
+- `google-auth-httplib2` - Google authentication for HTTP
+- `httplib2` - HTTP client library
+- `soupsieve` - Soup parsing library
+- `urllib3` - HTTP library
+- `solana` - Solana blockchain library
+- `solders` - Solana data structures
+- `base58` - Base58 encoding/decoding
 
 For a complete list with versions, see `requirements.txt`.
 
