@@ -1494,7 +1494,7 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mass_message command - Send a message to all users and groups."""
+    """Handle /mass_message command - Send a message to all regular users and groups."""
     if not context.args:
         await update.message.reply_text(
             "❌ Please provide a message to send.\n"
@@ -1507,12 +1507,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get the message from arguments
     message = " ".join(context.args)
     
-    # Get all users (both authorized members and regular members)
-    all_users = AUTHORIZED_MEMBERS + MEMBERS
-    
-    # Filter out users with empty user_ids
-    valid_users = [user for user in all_users if user.get('user_id')]
-    invalid_users = [user for user in all_users if not user.get('user_id')]
+    # Get all regular users (excluding authorized members)
+    valid_users = [user for user in MEMBERS if user.get('user_id')]  # Only regular members
     
     # Get all groups where the bot is a member
     all_groups = await get_bot_groups(context)
@@ -1543,7 +1539,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=user['user_id'],
-                text=f"📢 <b>Announcement from sqrDAO:</b>\n\n{message}",
+                text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
                 parse_mode=ParseMode.HTML
             )
             user_success_count += 1
@@ -1569,22 +1565,15 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send summary to the sender
     summary = f"✅ Message delivery complete!\n\n"
     
-    if invalid_users:
-        summary += f"⚠️ Skipped {len(invalid_users)} users with missing user IDs:\n"
-        summary += "\n".join(f"• @{user['username']}" for user in invalid_users[:5])
-        if len(invalid_users) > 5:
-            summary += f"\n... and {len(invalid_users) - 5} more users"
-        summary += "\n\n"
-    
-    summary += f"📊 User Statistics:\n"
-    summary += f"• Successfully sent: {user_success_count}\n"
-    summary += f"• Failed to send: {user_failure_count}\n"
-    
     if failed_users:
-        summary += f"\n❌ Failed to send to users:\n"
+        summary += f"❌ Failed to send to users:\n"
         summary += "\n".join(f"• {user}" for user in failed_users[:5])  # Show first 5 failed users
         if len(failed_users) > 5:
             summary += f"\n... and {len(failed_users) - 5} more users"
+    
+    summary += f"\n\n📊 User Statistics:\n"
+    summary += f"• Successfully sent: {user_success_count}\n"
+    summary += f"• Failed to send: {user_failure_count}\n"
     
     summary += f"\n\n📊 Group Statistics:\n"
     summary += f"• Successfully sent: {group_success_count}\n"
