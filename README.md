@@ -198,7 +198,7 @@ To view the logs for your bot running on a Virtual Machine (VM), you can use the
 
 ### Example Command
 
-Here’s a complete example command to follow logs for a service named `sqrdao-bot`:
+Here's a complete example command to follow logs for a service named `sqrdao-bot`:
 
 ```bash
 journalctl -u sqrdao-bot -f
@@ -299,6 +299,21 @@ WantedBy=multi-user.target
 ```bash
 sudo systemctl enable sqrdao-bot
 sudo systemctl start sqrdao-bot
+```
+
+4. Update the code:
+   - Navigate to your project directory:
+   ```bash
+   cd /path/to/sqrDAO-AI-Agent
+   ```
+   - Pull the latest changes from the repository:
+   ```bash
+   git pull origin main  # or the appropriate branch name
+   ```
+
+5. Restart the service:
+```bash
+sudo systemctl restart sqrdao-bot
 ```
 
 ## Dependencies
