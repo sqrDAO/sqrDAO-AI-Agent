@@ -113,6 +113,7 @@ def save_members_to_knowledge():
         # Save regular members only
         db.store_knowledge("members", json.dumps(MEMBERS))
         logger.info("Successfully saved regular members to knowledge base")
+        logger.info(f"Members: {MEMBERS}")
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
@@ -1428,6 +1429,7 @@ async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     members_text = "<b>Current Members:</b>\n\n"
+    logger.info(f"Members: {db.get_knowledge('members')}")
     for member in MEMBERS:
         members_text += f"• @{member['username']} (User ID: {member['user_id']})\n"
     
