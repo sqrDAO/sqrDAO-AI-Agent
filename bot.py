@@ -18,7 +18,7 @@ from googleapiclient.discovery import build
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Dict
 from solders.pubkey import Pubkey
 from solana.rpc.api import Client
@@ -619,6 +619,78 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         message = update.message
         if not message or not message.text:
+            return
+
+        # Check if we're awaiting a signature for space summarization
+        if context.user_data.get('awaiting_signature'):
+            # Check if the 30-minute time limit has expired
+            command_start_time = context.user_data.get('command_start_time')
+            if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
+                await message.reply_text(
+                    "❌ Time limit expired!\n"
+                    "The 30-minute window for completing the transaction has passed.\n"
+                    "Please use /summarize_space command again to start a new transaction.",
+                    parse_mode=ParseMode.HTML
+                )
+                # Reset the state
+                context.user_data['awaiting_signature'] = False
+                context.user_data['command_start_time'] = None
+                return
+
+            signature = message.text.strip()
+            
+            # Check transaction status
+            is_successful = await check_transaction_status(signature)
+            
+            if is_successful:
+                await message.reply_text(
+                    "✅ Transaction verified successfully!\n"
+                    "Processing your request...",
+                    parse_mode=ParseMode.HTML
+                )
+                # TODO: Add API call here for further processing
+                # For now, just return success
+                await message.reply_text("Success", parse_mode=ParseMode.HTML)
+            else:
+                # Get detailed logs from the transaction check
+                try:
+                    # Get transaction details for error logging
+                    signature_bytes = base58.b58decode(signature)
+                    signature_obj = Signature.from_bytes(signature_bytes)
+                    response = solana_client.get_transaction(
+                        signature_obj,
+                        encoding="json",
+                        max_supported_transaction_version=0
+                    )
+                    
+                    error_details = "Transaction verification failed. Details:\n"
+                    if response and response.value:
+                        if hasattr(response.value, 'meta') and response.value.meta:
+                            if hasattr(response.value.meta, 'err') and response.value.meta.err:
+                                error_details += f"Error: {response.value.meta.err}\n"
+                            else:
+                                error_details += "No specific error found in transaction meta.\n"
+                        else:
+                            error_details += "No transaction meta data available.\n"
+                    else:
+                        error_details += "No transaction data found.\n"
+                    
+                    await message.reply_text(
+                        f"❌ {error_details}\n"
+                        "Please ensure the transaction is completed and try again.",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Error getting transaction details: {str(e)}")
+                    await message.reply_text(
+                        "❌ Transaction verification failed.\n"
+                        "Please ensure the transaction is completed and try again.",
+                        parse_mode=ParseMode.HTML
+                    )
+            
+            # Reset the state
+            context.user_data['awaiting_signature'] = False
+            context.user_data['command_start_time'] = None
             return
 
         # Check for scammer accusations in any chat
@@ -1643,6 +1715,26 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(summary, parse_mode=ParseMode.HTML)
 
+async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /summarize_space command - Process SQR token transfer and verify transaction."""
+    # Store the user's state in context with timestamp
+    context.user_data['awaiting_signature'] = True
+    context.user_data['command_start_time'] = datetime.now()
+    
+    # Send instructions to the user
+    instructions = (
+        "🔄 <b>Space Summarization Process</b>\n\n"
+        "To proceed with space summarization, please follow these steps:\n\n"
+        "1. Send 1000 $SQR tokens to this address:\n"
+        "<code>Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7</code>\n\n"
+        "2. Copy the transaction signature\n"
+        "3. Paste the signature in this chat\n\n"
+        "⚠️ <i>Note: The transaction must be completed within 30 minutes from now.</i>\n"
+        "⏰ Time limit: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
+    )
+    
+    await update.message.reply_text(instructions, parse_mode=ParseMode.HTML)
+
 def main():
     """Start the bot."""
     try:
@@ -1683,6 +1775,7 @@ def main():
         application.add_handler(CommandHandler("add_group", add_group))
         application.add_handler(CommandHandler("list_groups", list_groups))
         application.add_handler(CommandHandler("remove_group", remove_group))
+        application.add_handler(CommandHandler("summarize_space", summarize_space))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_group_status))
         application.add_handler(ChatMemberHandler(handle_group_status))
