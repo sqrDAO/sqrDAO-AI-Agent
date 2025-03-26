@@ -1825,7 +1825,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2. Copy the transaction signature\n"
         "3. Paste the signature in this chat\n\n"
         "⚠️ <i>Note: The transaction must be completed within 30 minutes from now.</i>\n"
-        "⏰ Time limit: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
+        "⏰ Deadline: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
     )
     
     await update.message.reply_text(instructions, parse_mode=ParseMode.HTML)
