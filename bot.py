@@ -559,11 +559,14 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /learn - Add information to the bot's knowledge base
 • /learn_from_url - Learn from a web page by providing a URL
 • /bulk_learn - Add multiple entries from CSV file
+• /mass_message - Send a message to all users and groups
 • /approve_member - Approve a member request
 • /reject_member - Reject a member request
 • /list_requests - View pending member requests
 • /list_members - List all current members
-• /mass_message - Send a message to all users and groups
+• /list_groups - List all tracked groups
+• /add_group - Add a group to the bot's tracking list
+• /remove_group - Remove a group from the bot's tracking list
 """
 
     help_text += """
@@ -1553,7 +1556,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=group['id'],
-                text=f"📢 <b>Announcement from sqrDAO:</b>\n\n{message}",
+                text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
                 parse_mode=ParseMode.HTML
             )
             group_success_count += 1
