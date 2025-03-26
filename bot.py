@@ -95,11 +95,33 @@ def load_members_from_knowledge():
         
         # Load regular members from knowledge base
         regular_members = db.get_knowledge("members")
+        logger.info(f"Regular members entries: {regular_members}")
+        
+        # Initialize empty set to track unique members
+        unique_members = set()
+        MEMBERS = []
+        
         if regular_members:
-            MEMBERS = json.loads(regular_members[0][0])
-            logger.info(f"Loaded {len(MEMBERS)} regular members from knowledge base")
+            for entry in regular_members:
+                try:
+                    members_list = json.loads(entry[0])
+                    for member in members_list:
+                        # Create a unique key for each member
+                        member_key = f"{member['username']}_{member['user_id']}"
+                        if member_key not in unique_members:
+                            unique_members.add(member_key)
+                            MEMBERS.append(member)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error decoding JSON for members entry: {str(e)}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing members entry: {str(e)}")
+                    continue
+            
+            logger.info(f"Loaded {len(MEMBERS)} unique regular members from knowledge base")
         else:
             MEMBERS = []
+            logger.info("No regular members found in knowledge base")
 
     except Exception as e:
         logger.error(f"Error loading members: {str(e)}")
@@ -1429,7 +1451,6 @@ async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     members_text = "<b>Current Members:</b>\n\n"
-    logger.info(f"Members: {db.get_knowledge('members')}")
     for member in MEMBERS:
         members_text += f"• @{member['username']} (User ID: {member['user_id']})\n"
     
