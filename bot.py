@@ -19,13 +19,14 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from datetime import datetime
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict
 from solders.pubkey import Pubkey
 from solana.rpc.api import Client
 from spl.token.client import Token
 import base58
 from solders.keypair import Keypair
 from telegram.ext import ChatMemberHandler
+from solders.signature import Signature
 
 # SNS resolution function
 async def resolve_sns_domain(domain: str) -> str:
@@ -1218,7 +1219,7 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Get token accounts
         token_accounts = token.get_accounts_by_owner_json_parsed(owner=wallet_pubkey)
         logger.info(f"Retrieved token accounts: {token_accounts}")
-
+        
         if not token_accounts or not token_accounts.value:
             await update.message.reply_text(
                 f"No token account found for this token in the wallet {display_address}",
@@ -1291,6 +1292,58 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Error checking balance. Please verify the addresses and try again.",
             parse_mode=ParseMode.HTML
         )
+
+async def check_transaction_status(signature: str) -> bool:
+    """Check if a Solana transaction was successful.
+    
+    Args:
+        signature (str): The transaction signature to check
+        
+    Returns:
+        bool: True if transaction succeeded, False otherwise
+    """
+    try:
+        # Validate signature format
+        if not signature or len(signature) < 32:
+            logger.error("Invalid transaction signature format")
+            return False
+            
+        # Convert signature string to Signature object
+        try:
+            signature_bytes = base58.b58decode(signature)
+            signature_obj = Signature.from_bytes(signature_bytes)
+            logger.info("Successfully converted signature string to Signature object")
+        except Exception as e:
+            logger.error(f"Error converting signature format: {str(e)}")
+            return False
+            
+        # Get transaction details
+        response = solana_client.get_transaction(
+            signature_obj,
+            encoding="json",
+            max_supported_transaction_version=0
+        )
+        
+        if not response or not response.value:
+            logger.warning("No transaction data found in response")
+            return False
+            
+        transaction_data = response.value
+        
+        # Check if transaction was successful
+        if hasattr(transaction_data, 'meta') and transaction_data.meta:
+            if hasattr(transaction_data.meta, 'err') and transaction_data.meta.err:
+                logger.error(f"Transaction failed: {transaction_data.meta.err}")
+                return False
+            return True
+            
+        logger.warning("No meta data found in transaction")
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error checking transaction status: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+        return False
 
 @is_member
 async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1606,7 +1659,7 @@ def main():
 
         # Load members after the application is created
         load_members_from_knowledge()
-        load_groups_from_knowledge()  # Add this line to load groups
+        load_groups_from_knowledge()
 
         # Add handlers
         application.add_handler(CommandHandler("start", start))
@@ -1643,7 +1696,7 @@ def main():
 
         # Store the bot ID after the application is created
         global bot_id
-        bot_id = application.bot.id  # This should be safe now
+        bot_id = application.bot.id
 
     except Exception as e:
         logger.error(f"Fatal error in main(): {str(e)}")
