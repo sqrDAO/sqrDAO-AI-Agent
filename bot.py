@@ -663,7 +663,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             signature = message.text.strip()
             
             # Check transaction status
-            is_successful = await check_transaction_status(signature)
+            is_successful = await check_transaction_status(signature, command_start_time)
             
             if is_successful:
                 await message.reply_text(
@@ -1388,14 +1388,15 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
-async def check_transaction_status(signature: str) -> bool:
-    """Check if a Solana transaction was successful.
+async def check_transaction_status(signature: str, command_start_time: datetime) -> bool:
+    """Check if a Solana transaction was successful and completed within the time limit.
     
     Args:
         signature (str): The transaction signature to check
+        command_start_time (datetime): When the command was initiated
         
     Returns:
-        bool: True if transaction succeeded, False otherwise
+        bool: True if transaction succeeded and was completed within time limit, False otherwise
     """
     try:
         # Validate signature format
@@ -1426,14 +1427,29 @@ async def check_transaction_status(signature: str) -> bool:
         transaction_data = response.value
         
         # Check if transaction was successful
-        if hasattr(transaction_data, 'meta') and transaction_data.meta:
-            if hasattr(transaction_data.meta, 'err') and transaction_data.meta.err:
-                logger.error(f"Transaction failed: {transaction_data.meta.err}")
-                return False
-            return True
+        if not hasattr(transaction_data, 'meta') or not transaction_data.meta:
+            logger.warning("No meta data found in transaction")
+            return False
             
-        logger.warning("No meta data found in transaction")
-        return False
+        if hasattr(transaction_data.meta, 'err') and transaction_data.meta.err:
+            logger.error(f"Transaction failed: {transaction_data.meta.err}")
+            return False
+            
+        # Get block time from transaction
+        if not hasattr(transaction_data, 'block_time') or not transaction_data.block_time:
+            logger.warning("No block time found in transaction")
+            return False
+            
+        # Convert block time to datetime
+        transaction_time = datetime.fromtimestamp(transaction_data.block_time)
+        
+        # Check if transaction was completed within the 30-minute window
+        time_diff = transaction_time - command_start_time
+        if time_diff < timedelta(0) or time_diff > timedelta(minutes=30):
+            logger.error(f"Transaction completed outside time window. Time difference: {time_diff}")
+            return False
+            
+        return True
         
     except Exception as e:
         logger.error(f"Error checking transaction status: {str(e)}")
