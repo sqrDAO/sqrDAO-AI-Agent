@@ -18,14 +18,15 @@ from googleapiclient.discovery import build
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from datetime import datetime
-from typing import List, Tuple
+from datetime import datetime, timedelta
+from typing import List, Tuple, Optional, Dict
 from solders.pubkey import Pubkey
 from solana.rpc.api import Client
 from spl.token.client import Token
 import base58
 from solders.keypair import Keypair
 from telegram.ext import ChatMemberHandler
+from solders.signature import Signature
 
 # SNS resolution function
 async def resolve_sns_domain(domain: str) -> str:
@@ -94,11 +95,33 @@ def load_members_from_knowledge():
         
         # Load regular members from knowledge base
         regular_members = db.get_knowledge("members")
+        logger.info(f"Regular members entries: {regular_members}")
+        
+        # Initialize empty set to track unique members
+        unique_members = set()
+        MEMBERS = []
+        
         if regular_members:
-            MEMBERS = json.loads(regular_members[0][0])
-            logger.info(f"Loaded {len(MEMBERS)} regular members from knowledge base")
+            for entry in regular_members:
+                try:
+                    members_list = json.loads(entry[0])
+                    for member in members_list:
+                        # Create a unique key for each member
+                        member_key = f"{member['username']}_{member['user_id']}"
+                        if member_key not in unique_members:
+                            unique_members.add(member_key)
+                            MEMBERS.append(member)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error decoding JSON for members entry: {str(e)}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing members entry: {str(e)}")
+                    continue
+            
+            logger.info(f"Loaded {len(MEMBERS)} unique regular members from knowledge base")
         else:
             MEMBERS = []
+            logger.info("No regular members found in knowledge base")
 
     except Exception as e:
         logger.error(f"Error loading members: {str(e)}")
@@ -112,6 +135,7 @@ def save_members_to_knowledge():
         # Save regular members only
         db.store_knowledge("members", json.dumps(MEMBERS))
         logger.info("Successfully saved regular members to knowledge base")
+        logger.info(f"Members: {MEMBERS}")
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
@@ -618,6 +642,78 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         message = update.message
         if not message or not message.text:
+            return
+
+        # Check if we're awaiting a signature for space summarization
+        if context.user_data.get('awaiting_signature'):
+            # Check if the 30-minute time limit has expired
+            command_start_time = context.user_data.get('command_start_time')
+            if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
+                await message.reply_text(
+                    "❌ Time limit expired!\n"
+                    "The 30-minute window for completing the transaction has passed.\n"
+                    "Please use /summarize_space command again to start a new transaction.",
+                    parse_mode=ParseMode.HTML
+                )
+                # Reset the state
+                context.user_data['awaiting_signature'] = False
+                context.user_data['command_start_time'] = None
+                return
+
+            signature = message.text.strip()
+            
+            # Check transaction status
+            is_successful = await check_transaction_status(signature)
+            
+            if is_successful:
+                await message.reply_text(
+                    "✅ Transaction verified successfully!\n"
+                    "Processing your request...",
+                    parse_mode=ParseMode.HTML
+                )
+                # TODO: Add API call here for further processing
+                # For now, just return success
+                await message.reply_text("Success", parse_mode=ParseMode.HTML)
+            else:
+                # Get detailed logs from the transaction check
+                try:
+                    # Get transaction details for error logging
+                    signature_bytes = base58.b58decode(signature)
+                    signature_obj = Signature.from_bytes(signature_bytes)
+                    response = solana_client.get_transaction(
+                        signature_obj,
+                        encoding="json",
+                        max_supported_transaction_version=0
+                    )
+                    
+                    error_details = "Transaction verification failed. Details:\n"
+                    if response and response.value:
+                        if hasattr(response.value, 'meta') and response.value.meta:
+                            if hasattr(response.value.meta, 'err') and response.value.meta.err:
+                                error_details += f"Error: {response.value.meta.err}\n"
+                            else:
+                                error_details += "No specific error found in transaction meta.\n"
+                        else:
+                            error_details += "No transaction meta data available.\n"
+                    else:
+                        error_details += "No transaction data found.\n"
+                    
+                    await message.reply_text(
+                        f"❌ {error_details}\n"
+                        "Please ensure the transaction is completed and try again.",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Error getting transaction details: {str(e)}")
+                    await message.reply_text(
+                        "❌ Transaction verification failed.\n"
+                        "Please ensure the transaction is completed and try again.",
+                        parse_mode=ParseMode.HTML
+                    )
+            
+            # Reset the state
+            context.user_data['awaiting_signature'] = False
+            context.user_data['command_start_time'] = None
             return
 
         # Check for scammer accusations in any chat
@@ -1218,7 +1314,7 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Get token accounts
         token_accounts = token.get_accounts_by_owner_json_parsed(owner=wallet_pubkey)
         logger.info(f"Retrieved token accounts: {token_accounts}")
-
+        
         if not token_accounts or not token_accounts.value:
             await update.message.reply_text(
                 f"No token account found for this token in the wallet {display_address}",
@@ -1291,6 +1387,58 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Error checking balance. Please verify the addresses and try again.",
             parse_mode=ParseMode.HTML
         )
+
+async def check_transaction_status(signature: str) -> bool:
+    """Check if a Solana transaction was successful.
+    
+    Args:
+        signature (str): The transaction signature to check
+        
+    Returns:
+        bool: True if transaction succeeded, False otherwise
+    """
+    try:
+        # Validate signature format
+        if not signature or len(signature) < 32:
+            logger.error("Invalid transaction signature format")
+            return False
+            
+        # Convert signature string to Signature object
+        try:
+            signature_bytes = base58.b58decode(signature)
+            signature_obj = Signature.from_bytes(signature_bytes)
+            logger.info("Successfully converted signature string to Signature object")
+        except Exception as e:
+            logger.error(f"Error converting signature format: {str(e)}")
+            return False
+            
+        # Get transaction details
+        response = solana_client.get_transaction(
+            signature_obj,
+            encoding="json",
+            max_supported_transaction_version=0
+        )
+        
+        if not response or not response.value:
+            logger.warning("No transaction data found in response")
+            return False
+            
+        transaction_data = response.value
+        
+        # Check if transaction was successful
+        if hasattr(transaction_data, 'meta') and transaction_data.meta:
+            if hasattr(transaction_data.meta, 'err') and transaction_data.meta.err:
+                logger.error(f"Transaction failed: {transaction_data.meta.err}")
+                return False
+            return True
+            
+        logger.warning("No meta data found in transaction")
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error checking transaction status: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+        return False
 
 @is_member
 async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1590,6 +1738,26 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(summary, parse_mode=ParseMode.HTML)
 
+async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /summarize_space command - Process SQR token transfer and verify transaction."""
+    # Store the user's state in context with timestamp
+    context.user_data['awaiting_signature'] = True
+    context.user_data['command_start_time'] = datetime.now()
+    
+    # Send instructions to the user
+    instructions = (
+        "🔄 <b>Space Summarization Process</b>\n\n"
+        "To proceed with space summarization, please follow these steps:\n\n"
+        "1. Send 1000 $SQR tokens to this address:\n"
+        "<code>Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7</code>\n\n"
+        "2. Copy the transaction signature\n"
+        "3. Paste the signature in this chat\n\n"
+        "⚠️ <i>Note: The transaction must be completed within 30 minutes from now.</i>\n"
+        "⏰ Time limit: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
+    )
+    
+    await update.message.reply_text(instructions, parse_mode=ParseMode.HTML)
+
 def main():
     """Start the bot."""
     try:
@@ -1606,7 +1774,7 @@ def main():
 
         # Load members after the application is created
         load_members_from_knowledge()
-        load_groups_from_knowledge()  # Add this line to load groups
+        load_groups_from_knowledge()
 
         # Add handlers
         application.add_handler(CommandHandler("start", start))
@@ -1630,6 +1798,7 @@ def main():
         application.add_handler(CommandHandler("add_group", add_group))
         application.add_handler(CommandHandler("list_groups", list_groups))
         application.add_handler(CommandHandler("remove_group", remove_group))
+        application.add_handler(CommandHandler("summarize_space", summarize_space))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_group_status))
         application.add_handler(ChatMemberHandler(handle_group_status))
@@ -1643,7 +1812,7 @@ def main():
 
         # Store the bot ID after the application is created
         global bot_id
-        bot_id = application.bot.id  # This should be safe now
+        bot_id = application.bot.id
 
     except Exception as e:
         logger.error(f"Fatal error in main(): {str(e)}")
