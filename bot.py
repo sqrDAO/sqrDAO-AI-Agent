@@ -576,6 +576,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /contact - Get contact information
 • /events - View sqrDAO events
 • /balance - Check $SQR token balance
+• /sqr_info - Get information about $SQR token
 • /request_member - Request to become a member
 
 """
@@ -826,6 +827,7 @@ async def set_bot_commands(application):
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
         ("balance", "Check $SQR token balance"),  # Added balance command
+        ("sqr_info", "Get information about $SQR token"),
         ("request_member", "Request to become a sqrDAO member")
     ]
     
