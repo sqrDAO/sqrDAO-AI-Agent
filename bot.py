@@ -1628,11 +1628,25 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     groups_text = "<b>Current Groups:</b>\n\n"
     for group in GROUP_MEMBERS:
-        added_at = group.get('added_at', 'unknown')
-        added_by = f" (by @{group.get('added_by', 'system')})" if 'added_by' in group else ""
-        groups_text += f"• {group['title']} ({group['id']}) - {group['type']}{added_by}\n"
+        # Escape special characters in title
+        title = group['title'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        group_id = group['id']
+        group_type = group['type']
+        added_by = group.get('added_by', 'system')
+        
+        # Only add the "by @username" part if there's a username
+        added_by_text = f" (by @{added_by})" if added_by != 'system' else ""
+        
+        # Build the line with proper HTML escaping
+        groups_text += f"• {title} ({group_id}) - {group_type}{added_by_text}\n"
     
-    await update.message.reply_text(groups_text, parse_mode=ParseMode.HTML)
+    try:
+        await update.message.reply_text(groups_text, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.error(f"Error sending groups list: {str(e)}")
+        # Fallback to plain text if HTML parsing fails
+        plain_text = groups_text.replace('<b>', '').replace('</b>', '')
+        await update.message.reply_text(plain_text)
 
 # Add this command to remove a group
 @is_member
