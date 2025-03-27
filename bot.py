@@ -1491,9 +1491,10 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         old_status = update.my_chat_member.old_chat_member.status if update.my_chat_member.old_chat_member else None
         new_status = update.my_chat_member.new_chat_member.status if update.my_chat_member.new_chat_member else None
         
+        logger.debug(f"Group status update: {chat.title} (ID: {chat.id}) - Old Status: {old_status}, New Status: {new_status}")
+
         # Bot was added to a group
         if new_status in ['member', 'administrator'] and old_status in [None, 'left', 'kicked']:
-            # Check if this group is already in our list
             if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
                 GROUP_MEMBERS.append({
                     'id': chat.id,
@@ -1502,27 +1503,30 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
                     'added_at': datetime.now().isoformat()
                 })
                 save_groups_to_knowledge()
+                logger.info(f"Added group: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
         
         # Bot was removed from a group
         elif new_status in ['left', 'kicked'] and old_status in ['member', 'administrator']:
-            # Remove from our list if present
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
             save_groups_to_knowledge()
+            logger.info(f"Removed group: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
         
         # Handle group migration to supergroup
-        elif old_status == 'member' and new_status == 'supergroup':
-            # Update the group ID in our list
+        elif (old_status == 'member' and new_status == 'supergroup') or (old_status == 'group' and new_status == 'supergroup'):
+            logger.info(f"Group {chat.title} (ID: {chat.id}) has migrated to a supergroup.")
+            logger.debug(f"Checking migration condition: Old Status: {old_status}, New Status: {new_status}")
             for group in GROUP_MEMBERS:
                 if group['id'] == update.my_chat_member.chat.id:
+                    logger.debug(f"Updating group ID for migrated group: {group['title']} from {group['id']} to {chat.id}")
                     group['id'] = chat.id  # Update to new supergroup ID
                     group['type'] = 'supergroup'  # Update type to supergroup
                     save_groups_to_knowledge()
                     logger.info(f"Updated group ID for migrated group: {group['title']} to new ID: {chat.id}")
+                    break  # Exit the loop after updating the group ID
     
     # Also check normal message updates from groups
     elif update.message and update.message.chat.type in ['group', 'supergroup']:
         chat = update.message.chat
-        # If this is a group message and the group is not in our list, add it
         if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
             GROUP_MEMBERS.append({
                 'id': chat.id,
@@ -1531,6 +1535,7 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
                 'added_at': datetime.now().isoformat()
             })
             save_groups_to_knowledge()
+            logger.info(f"Added group from message: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
 
 # Replace the get_bot_groups function with this simpler version
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
@@ -1674,24 +1679,13 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /mass_message command - Send a message to all regular users and groups."""
     # Get the message text by removing the command
-    message_parts = update.message.text.replace('/mass_message', '').strip().split('|')
-    
-    if len(message_parts) < 2:
-        await update.message.reply_text(
-            "❌ Please provide a topic channel and a message to send.\n"
-            "Usage: /mass_message [topic_channel] | [message]\n"
-            "Example: /mass_message #announcements | Hello everyone!\nThis is an important announcement.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    topic_channel = message_parts[0].strip()
-    message = message_parts[1].strip()
+    message = update.message.text.replace('/mass_message', '').strip()
     
     if not message:
         await update.message.reply_text(
             "❌ Please provide a message to send.\n"
-            "Usage: /mass_message [topic_channel] | [message]",
+            "Usage: /mass_message [message]\n"
+            "Example: /mass_message Testing",
             parse_mode=ParseMode.HTML
         )
         return
@@ -1723,57 +1717,23 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     failed_users = []
     failed_groups = []
     
-    # Send message to each valid user
-    for user in valid_users:
+    logger.debug(f"Starting mass message with message: {message}")
+
+    for group in all_groups:
         try:
+            logger.info(f"Sending message to group {group['title']} (ID: {group['id']})")
+
             await context.bot.send_message(
-                chat_id=user['user_id'],
+                chat_id=group['id'],
                 text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
                 parse_mode=ParseMode.HTML
             )
-            user_success_count += 1
-        except Exception as e:
-            user_failure_count += 1
-            failed_users.append(f"@{user['username']}")
-            logger.error(f"Failed to send message to user {user['username']}: {str(e)}")
-    
-    # Logic to send messages to groups
-    topic_found = False
-    for group in all_groups:
-        try:
-            # Check if the group title matches the specified topic channel
-            if topic_channel.lower() in group.get('title', '').lower():
-                # Retrieve the message_thread_id for the topic
-                message_thread_id = group.get('message_thread_id')  # Ensure this is correctly populated
-                
-                await context.bot.send_message(
-                    chat_id=group['id'],
-                    text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
-                    parse_mode=ParseMode.HTML,
-                    message_thread_id=message_thread_id  # Send to the specific topic
-                )
-                group_success_count += 1
-                topic_found = True  # Mark that we found a matching topic
+            group_success_count += 1
             
         except Exception as e:
             group_failure_count += 1
             failed_groups.append(f"{group['title']} ({group['type']})")
-            logger.error(f"Failed to send message to group {group['title']}: {str(e)}")
-    
-    # If no matching topic was found, send to all groups as default
-    if not topic_found:
-        for group in all_groups:
-            try:
-                await context.bot.send_message(
-                    chat_id=group['id'],
-                    text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
-                    parse_mode=ParseMode.HTML
-                )
-                group_success_count += 1
-            except Exception as e:
-                group_failure_count += 1
-                failed_groups.append(f"{group['title']} ({group['type']})")
-                logger.error(f"Failed to send message to group {group['title']}: {str(e)}")
+            logger.error(f"Failed to send message to group {group['title']} (ID: {group['id']}): {str(e)}")
     
     # Send summary to the sender
     summary = f"✅ Message delivery complete!\n\n"
@@ -1791,12 +1751,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary += f"\n\n📊 Group Statistics:\n"
     summary += f"• Successfully sent: {group_success_count}\n"
     summary += f"• Failed to send: {group_failure_count}\n"
-    
-    if failed_groups:
-        summary += f"\n❌ Failed to send to groups:\n"
-        summary += "\n".join(f"• {group}" for group in failed_groups[:5])  # Show first 5 failed groups
-        if len(failed_groups) > 5:
-            summary += f"\n... and {len(failed_groups) - 5} more groups"
     
     await update.message.reply_text(summary, parse_mode=ParseMode.HTML)
 
