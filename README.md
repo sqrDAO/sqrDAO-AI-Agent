@@ -41,6 +41,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - `/contact` - Get contact information
 - `/events` - View sqrDAO events
 - `/balance` - Check $SQR token balance
+- `/sqr_info` - Get information about the $SQR token
 - `/request_member` - Request to become a member
 
 ### Member Commands
@@ -87,6 +88,7 @@ The `/mass_message` command has been updated to:
 - Provide detailed delivery statistics
 - Show failed message attempts
 - Include proper error handling and logging
+- Provide detailed delivery statistics
 
 ## Setup
 
