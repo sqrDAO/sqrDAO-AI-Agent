@@ -666,7 +666,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data['awaiting_signature'] = False
                 context.user_data['command_start_time'] = None
                 context.user_data['failed_attempts'] = 0
-                logger.info("Reset awaiting_signature state after time limit expired")
+                logger.info("Reset awaiting_signature state after deadline passed")
                 return
 
             signature = message.text.strip()
@@ -1391,7 +1391,7 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def check_transaction_status(signature: str, command_start_time: datetime) -> Tuple[bool, str]:
-    """Check if a Solana transaction was successful, completed within the time limit, and has correct amount.
+    """Check if a Solana transaction was successful, completed within the deadline, and has correct amount.
     
     Args:
         signature (str): The transaction signature to check
@@ -1700,17 +1700,17 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /mass_message command - Send a message to all regular users and groups."""
-    if not context.args:
+    # Get the message text by removing the command
+    message = update.message.text.replace('/mass_message', '').strip()
+    
+    if not message:
         await update.message.reply_text(
             "❌ Please provide a message to send.\n"
             "Usage: /mass_message [message]\n"
-            "Example: /mass_message Hello everyone! This is an important announcement.",
+            "Example: /mass_message Hello everyone!\nThis is an important announcement.",
             parse_mode=ParseMode.HTML
         )
         return
-    
-    # Get the message from arguments
-    message = " ".join(context.args)
     
     # Get all regular users (excluding authorized members)
     valid_users = [user for user in MEMBERS if user.get('user_id')]  # Only regular members
