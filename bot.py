@@ -147,9 +147,30 @@ def load_groups_from_knowledge():
     try:
         # Check if groups are stored in the knowledge base
         groups_knowledge = db.get_knowledge("bot_groups")
+        logger.info(f"Groups knowledge: {groups_knowledge}")
+        
         if groups_knowledge:
-            GROUP_MEMBERS = json.loads(groups_knowledge[0][0])
-            logger.info(f"Loaded {len(GROUP_MEMBERS)} groups from knowledge base")
+            # Initialize empty set to track unique groups by ID
+            unique_groups = {}
+            
+            # Process each entry in the knowledge base
+            for entry in groups_knowledge:
+                try:
+                    groups_list = json.loads(entry[0])
+                    for group in groups_list:
+                        # Use group ID as key to ensure uniqueness
+                        if group['id'] not in unique_groups:
+                            unique_groups[group['id']] = group
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error decoding JSON for groups entry: {str(e)}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing groups entry: {str(e)}")
+                    continue
+            
+            # Convert unique groups dictionary to list
+            GROUP_MEMBERS = list(unique_groups.values())
+            logger.info(f"Loaded {len(GROUP_MEMBERS)} unique groups from knowledge base")
         else:
             GROUP_MEMBERS = []
             logger.info("No groups found in knowledge base")
