@@ -22,6 +22,8 @@ from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Dict
 from solders.pubkey import Pubkey
 from solana.rpc.api import Client
+from solders.rpc.responses import GetTransactionResp
+from solana.rpc.commitment import Commitment
 from spl.token.client import Token
 import base58
 from solders.keypair import Keypair
@@ -644,78 +646,78 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not message or not message.text:
             return
 
-        # Check if we're awaiting a signature for space summarization
+        logger.info(f"Received message: {message.text}")
+        logger.info(f"User data state: {context.user_data}")
+
+        # First check if we're awaiting a signature for space summarization
         if context.user_data.get('awaiting_signature'):
-            # Check if the 30-minute time limit has expired
+            logger.info("Bot is awaiting a signature")
             command_start_time = context.user_data.get('command_start_time')
+            logger.info(f"Command start time: {command_start_time}")
+            
             if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
+                logger.warning("Time limit expired for signature verification")
                 await message.reply_text(
                     "❌ Time limit expired!\n"
                     "The 30-minute window for completing the transaction has passed.\n"
                     "Please use /summarize_space command again to start a new transaction.",
                     parse_mode=ParseMode.HTML
                 )
-                # Reset the state
                 context.user_data['awaiting_signature'] = False
                 context.user_data['command_start_time'] = None
+                context.user_data['failed_attempts'] = 0
+                logger.info("Reset awaiting_signature state after time limit expired")
                 return
 
             signature = message.text.strip()
-            
-            # Check transaction status
-            is_successful = await check_transaction_status(signature)
+            logger.info(f"Processing signature: {signature}")
+            is_successful, message_text = await check_transaction_status(signature, command_start_time)
             
             if is_successful:
+                logger.info("Transaction verification successful")
                 await message.reply_text(
                     "✅ Transaction verified successfully!\n"
                     "Processing your request...",
                     parse_mode=ParseMode.HTML
                 )
-                # TODO: Add API call here for further processing
-                # For now, just return success
                 await message.reply_text("Success", parse_mode=ParseMode.HTML)
+                context.user_data['awaiting_signature'] = False
+                context.user_data['command_start_time'] = None
+                context.user_data['failed_attempts'] = 0
+                logger.info("Reset awaiting_signature state after successful verification")
             else:
-                # Get detailed logs from the transaction check
-                try:
-                    # Get transaction details for error logging
-                    signature_bytes = base58.b58decode(signature)
-                    signature_obj = Signature.from_bytes(signature_bytes)
-                    response = solana_client.get_transaction(
-                        signature_obj,
-                        encoding="json",
-                        max_supported_transaction_version=0
-                    )
-                    
-                    error_details = "Transaction verification failed. Details:\n"
-                    if response and response.value:
-                        if hasattr(response.value, 'meta') and response.value.meta:
-                            if hasattr(response.value.meta, 'err') and response.value.meta.err:
-                                error_details += f"Error: {response.value.meta.err}\n"
-                            else:
-                                error_details += "No specific error found in transaction meta.\n"
-                        else:
-                            error_details += "No transaction meta data available.\n"
-                    else:
-                        error_details += "No transaction data found.\n"
-                    
+                # Increment failed attempts counter
+                failed_attempts = context.user_data.get('failed_attempts', 0) + 1
+                context.user_data['failed_attempts'] = failed_attempts
+                logger.warning(f"Transaction verification failed: {message_text} (Attempt {failed_attempts}/3)")
+                
+                if failed_attempts >= 3:
+                    logger.warning("Maximum failed attempts reached")
                     await message.reply_text(
-                        f"❌ {error_details}\n"
-                        "Please ensure the transaction is completed and try again.",
+                        "❌ Maximum number of failed attempts reached.\n"
+                        "Please use /summarize_space command again to start a new transaction.",
                         parse_mode=ParseMode.HTML
                     )
-                except Exception as e:
-                    logger.error(f"Error getting transaction details: {str(e)}")
+                    context.user_data['awaiting_signature'] = False
+                    context.user_data['command_start_time'] = None
+                    context.user_data['failed_attempts'] = 0
+                    logger.info("Reset awaiting_signature state after 3 failed attempts")
+                else:
+                    remaining_attempts = 3 - failed_attempts
                     await message.reply_text(
-                        "❌ Transaction verification failed.\n"
-                        "Please ensure the transaction is completed and try again.",
+                        f"{message_text}\n\n"
+                        f"Please ensure you:\n"
+                        f"1. Send exactly 1000 $SQR tokens\n"
+                        f"2. Complete the transaction within 30 minutes\n"
+                        f"3. Send the correct transaction signature\n\n"
+                        f"⚠️ You have {remaining_attempts} attempt{'s' if remaining_attempts > 1 else ''} remaining.",
                         parse_mode=ParseMode.HTML
                     )
-            
-            # Reset the state
-            context.user_data['awaiting_signature'] = False
-            context.user_data['command_start_time'] = None
             return
 
+        logger.info("Not awaiting signature, proceeding with regular message handling")
+
+        # Only proceed with other message handling if we're not awaiting a signature
         # Check for scammer accusations in any chat
         if "scammer" in message.text.lower():
             await message.reply_text("🚫 Rome wasn't built in one day! Building something meaningful takes time and dedication. Let's support our founders who are working hard to create value! 💪")
@@ -1388,57 +1390,109 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
-async def check_transaction_status(signature: str) -> bool:
-    """Check if a Solana transaction was successful.
+async def check_transaction_status(signature: str, command_start_time: datetime) -> Tuple[bool, str]:
+    """Check if a Solana transaction was successful, completed within the time limit, and has correct amount.
     
     Args:
         signature (str): The transaction signature to check
+        command_start_time (datetime): When the command was initiated
         
     Returns:
-        bool: True if transaction succeeded, False otherwise
+        Tuple[bool, str]: (True if all checks pass, error message if any check fails)
     """
     try:
         # Validate signature format
         if not signature or len(signature) < 32:
-            logger.error("Invalid transaction signature format")
-            return False
+            return False, "❌ Invalid transaction signature format"
             
         # Convert signature string to Signature object
         try:
-            signature_bytes = base58.b58decode(signature)
-            signature_obj = Signature.from_bytes(signature_bytes)
-            logger.info("Successfully converted signature string to Signature object")
+            signature_obj = Signature.from_string(signature)
+            logger.info(f"Successfully converted signature string to Signature object: {signature_obj}")
         except Exception as e:
-            logger.error(f"Error converting signature format: {str(e)}")
-            return False
+            return False, f"❌ Error converting signature format: {str(e)}"
             
-        # Get transaction details
+        # Get transaction details according to Solana RPC spec
         response = solana_client.get_transaction(
             signature_obj,
-            encoding="json",
-            max_supported_transaction_version=0
+            encoding="jsonParsed",  # Use jsonParsed for better token balance parsing
         )
         
         if not response or not response.value:
-            logger.warning("No transaction data found in response")
-            return False
+            return False, "❌ No transaction data found in response"
             
-        transaction_data = response.value
+        # Access the transaction data structure correctly
+        transaction_data = response.value.transaction
+        meta = transaction_data.meta
         
         # Check if transaction was successful
-        if hasattr(transaction_data, 'meta') and transaction_data.meta:
-            if hasattr(transaction_data.meta, 'err') and transaction_data.meta.err:
-                logger.error(f"Transaction failed: {transaction_data.meta.err}")
-                return False
-            return True
+        if not meta:
+            return False, "❌ No meta data found in transaction"
             
-        logger.warning("No meta data found in transaction")
-        return False
+        if meta.err:
+            return False, f"❌ Transaction failed: {meta.err}"
+            
+        # Get block time from transaction
+        if not response.value.block_time:
+            return False, "❌ No block time found in transaction"
+            
+        # Convert block time to datetime
+        transaction_time = datetime.fromtimestamp(response.value.block_time)
+        
+        # Check if transaction was completed within the 30-minute window
+        time_diff = transaction_time - command_start_time
+        if time_diff < timedelta(0):
+            return False, "❌ Transaction was completed before the command was issued"
+        elif time_diff > timedelta(minutes=30):
+            minutes_late = int((time_diff - timedelta(minutes=30)).total_seconds() / 60)
+            return False, f"❌ Transaction was completed {minutes_late} minutes after the 30-minute window expired"
+            
+        # Check token amount using pre and post token balances
+        try:
+            # Get pre and post token balances
+            pre_balances = meta.pre_token_balances
+            post_balances = meta.post_token_balances
+            
+            if not pre_balances or not post_balances:
+                return False, "❌ No token balance information found in transaction"
+            
+            # Find the token transfer amount by comparing pre and post balances
+            transfer_amount = 0
+            target_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"
+            
+            # First find the token account that received the tokens
+            for post_balance in post_balances:
+                if str(post_balance.mint) == target_mint:
+                    # Find the corresponding pre-balance for this account
+                    pre_balance = next(
+                        (pre for pre in pre_balances 
+                         if str(pre.mint) == target_mint and pre.account_index == post_balance.account_index),
+                        None
+                    )
+                    
+                    if pre_balance:
+                        # Calculate the actual transfer amount (post - pre)
+                        pre_amount = float(pre_balance.ui_token_amount.ui_amount_string)
+                        post_amount = float(post_balance.ui_token_amount.ui_amount_string)
+                        transfer_amount = post_amount - pre_amount
+                        break
+            
+            if transfer_amount <= 0:
+                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: 1000)"
+                
+            if transfer_amount < 1000:
+                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: 1000)"
+                
+        except Exception as e:
+            logger.error(f"Error checking token amount: {str(e)}")
+            return False, "❌ Error verifying token amount in transaction"
+            
+        return True, "✅ Transaction verified successfully!"
         
     except Exception as e:
         logger.error(f"Error checking transaction status: {str(e)}")
         logger.error(f"Full error traceback: {traceback.format_exc()}")
-        return False
+        return False, f"❌ Error checking transaction status: {str(e)}"
 
 @is_member
 async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1606,7 +1660,7 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /remove_group command - Remove a group ID."""
     if not context.args:
         await update.message.reply_text(
-            "❌ Please provide a group ID to remove.\n"
+            "<b>❌ Please provide a group ID to remove.</b>\n"
             "Usage: /remove_group [group_id]\n"
             "Example: /remove_group -1001234567890\n\n"
             "Use /list_groups to see all tracked groups.",
@@ -1623,23 +1677,23 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             GROUP_MEMBERS.remove(group)
             save_groups_to_knowledge()
             await update.message.reply_text(
-                f"✅ Successfully removed group: {group['title']} ({group_id})",
+                f"<b>✅ Successfully removed group:</b> {group['title']} ({group_id})",
                 parse_mode=ParseMode.HTML
             )
         else:
             await update.message.reply_text(
-                f"⚠️ No group found with ID {group_id}.",
+                f"<b>⚠️ No group found with ID {group_id}.</b>",
                 parse_mode=ParseMode.HTML
             )
     except ValueError:
         await update.message.reply_text(
-            "❌ Invalid group ID. Please provide a valid numerical ID.",
+            "<b>❌ Invalid group ID. Please provide a valid numerical ID.</b>",
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
         logger.error(f"Error removing group: {str(e)}")
         await update.message.reply_text(
-            f"❌ Error removing group: {str(e)}",
+            f"<b>❌ Error removing group:</b> {str(e)}",
             parse_mode=ParseMode.HTML
         )
 
@@ -1740,6 +1794,24 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /summarize_space command - Process SQR token transfer and verify transaction."""
+    # Check if there's already an active transaction window
+    if context.user_data.get('awaiting_signature'):
+        command_start_time = context.user_data.get('command_start_time')
+        if command_start_time and (datetime.now() - command_start_time) <= timedelta(minutes=30):
+            # Calculate remaining time
+            remaining_time = timedelta(minutes=30) - (datetime.now() - command_start_time)
+            minutes = int(remaining_time.total_seconds() // 60)
+            seconds = int(remaining_time.total_seconds() % 60)
+            
+            await update.message.reply_text(
+                f"⚠️ <b>Active Transaction Window</b>\n\n"
+                f"You already have an active transaction window with {minutes}m {seconds}s remaining.\n"
+                f"Please complete the current transaction or wait for the window to expire before starting a new one.\n\n"
+                f"If you need to cancel the current transaction, please contact an administrator.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+    
     # Store the user's state in context with timestamp
     context.user_data['awaiting_signature'] = True
     context.user_data['command_start_time'] = datetime.now()
@@ -1753,7 +1825,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2. Copy the transaction signature\n"
         "3. Paste the signature in this chat\n\n"
         "⚠️ <i>Note: The transaction must be completed within 30 minutes from now.</i>\n"
-        "⏰ Time limit: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
+        "⏰ Deadline: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
     )
     
     await update.message.reply_text(instructions, parse_mode=ParseMode.HTML)
