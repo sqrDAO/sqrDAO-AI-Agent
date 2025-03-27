@@ -82,14 +82,12 @@ def load_members_from_knowledge():
         authorized_members_knowledge = db.get_knowledge("authorized_members")
         if authorized_members_knowledge:
             AUTHORIZED_MEMBERS = json.loads(authorized_members_knowledge[0][0])
-            logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members from knowledge base")
         else:
             # Load authorized members from config.json if not found in knowledge base
             try:
                 with open('config.json', 'r') as f:
                     config = json.load(f)
                     AUTHORIZED_MEMBERS = config.get('authorized_members', [])
-                    logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members from config.json")
             except Exception as e:
                 logger.error(f"Error loading authorized members from config.json: {str(e)}")
                 logger.error("Falling back to empty authorized members list")
@@ -97,7 +95,6 @@ def load_members_from_knowledge():
         
         # Load regular members from knowledge base
         regular_members = db.get_knowledge("members")
-        logger.info(f"Regular members entries: {regular_members}")
         
         # Initialize empty set to track unique members
         unique_members = set()
@@ -119,11 +116,8 @@ def load_members_from_knowledge():
                 except Exception as e:
                     logger.error(f"Error processing members entry: {str(e)}")
                     continue
-            
-            logger.info(f"Loaded {len(MEMBERS)} unique regular members from knowledge base")
         else:
             MEMBERS = []
-            logger.info("No regular members found in knowledge base")
 
     except Exception as e:
         logger.error(f"Error loading members: {str(e)}")
@@ -136,8 +130,6 @@ def save_members_to_knowledge():
     try:
         # Save regular members only
         db.store_knowledge("members", json.dumps(MEMBERS))
-        logger.info("Successfully saved regular members to knowledge base")
-        logger.info(f"Members: {MEMBERS}")
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
@@ -147,7 +139,6 @@ def load_groups_from_knowledge():
     try:
         # Check if groups are stored in the knowledge base
         groups_knowledge = db.get_knowledge("bot_groups")
-        logger.info(f"Groups knowledge: {groups_knowledge}")
         
         if groups_knowledge:
             # Initialize empty set to track unique groups by ID
@@ -170,10 +161,8 @@ def load_groups_from_knowledge():
             
             # Convert unique groups dictionary to list
             GROUP_MEMBERS = list(unique_groups.values())
-            logger.info(f"Loaded {len(GROUP_MEMBERS)} unique groups from knowledge base")
         else:
             GROUP_MEMBERS = []
-            logger.info("No groups found in knowledge base")
     except Exception as e:
         logger.error(f"Error loading groups: {str(e)}")
         logger.error("Falling back to empty groups list")
@@ -184,7 +173,6 @@ def save_groups_to_knowledge():
     try:
         # Save groups
         db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
-        logger.info("Successfully saved groups to knowledge base")
     except Exception as e:
         logger.error(f"Error saving groups to knowledge base: {str(e)}")
 
@@ -280,7 +268,6 @@ def is_any_member(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        logger.info(f"User: {user}")
         if user.username and (find_authorized_member_by_username(user.username) or find_member_by_username(user.username)):
             return await func(update, context)
         else:
@@ -358,7 +345,6 @@ async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'user_id': user_id
     })
     save_members_to_knowledge()  # Ensure this function is updated to handle the new structure
-    logger.info(f"Added member: {username} with user_id: {user_id}")
     # Store the authorized member in the knowledge base
     
     # Remove from pending requests
@@ -590,6 +576,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /contact - Get contact information
 • /events - View sqrDAO events
 • /balance - Check $SQR token balance
+• /sqr_info - Get information about $SQR token
 • /request_member - Request to become a member
 
 """
@@ -667,17 +654,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not message or not message.text:
             return
 
-        logger.info(f"Received message: {message.text}")
-        logger.info(f"User data state: {context.user_data}")
-
         # First check if we're awaiting a signature for space summarization
         if context.user_data.get('awaiting_signature'):
-            logger.info("Bot is awaiting a signature")
             command_start_time = context.user_data.get('command_start_time')
-            logger.info(f"Command start time: {command_start_time}")
             
             if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
-                logger.warning("Time limit expired for signature verification")
                 await message.reply_text(
                     "❌ Time limit expired!\n"
                     "The 30-minute window for completing the transaction has passed.\n"
@@ -687,15 +668,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data['awaiting_signature'] = False
                 context.user_data['command_start_time'] = None
                 context.user_data['failed_attempts'] = 0
-                logger.info("Reset awaiting_signature state after deadline passed")
                 return
 
             signature = message.text.strip()
-            logger.info(f"Processing signature: {signature}")
             is_successful, message_text = await check_transaction_status(signature, command_start_time)
             
             if is_successful:
-                logger.info("Transaction verification successful")
                 await message.reply_text(
                     "✅ Transaction verified successfully!\n"
                     "Processing your request...",
@@ -705,15 +683,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data['awaiting_signature'] = False
                 context.user_data['command_start_time'] = None
                 context.user_data['failed_attempts'] = 0
-                logger.info("Reset awaiting_signature state after successful verification")
             else:
                 # Increment failed attempts counter
                 failed_attempts = context.user_data.get('failed_attempts', 0) + 1
                 context.user_data['failed_attempts'] = failed_attempts
-                logger.warning(f"Transaction verification failed: {message_text} (Attempt {failed_attempts}/3)")
                 
                 if failed_attempts >= 3:
-                    logger.warning("Maximum failed attempts reached")
                     await message.reply_text(
                         "❌ Maximum number of failed attempts reached.\n"
                         "Please use /summarize_space command again to start a new transaction.",
@@ -722,7 +697,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     context.user_data['awaiting_signature'] = False
                     context.user_data['command_start_time'] = None
                     context.user_data['failed_attempts'] = 0
-                    logger.info("Reset awaiting_signature state after 3 failed attempts")
                 else:
                     remaining_attempts = 3 - failed_attempts
                     await message.reply_text(
@@ -735,8 +709,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode=ParseMode.HTML
                     )
             return
-
-        logger.info("Not awaiting signature, proceeding with regular message handling")
 
         # Only proceed with other message handling if we're not awaiting a signature
         # Check for scammer accusations in any chat
@@ -781,8 +753,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Format and send response with HTML formatting
             formatted_text = format_response_for_telegram(response)
             
-            logger.debug(f"Formatted response: {formatted_text}")
-            
             await message.reply_text(
                 formatted_text,
                 parse_mode=ParseMode.HTML
@@ -825,8 +795,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Format and send response with HTML formatting
             formatted_text = format_response_for_telegram(response)
             
-            logger.debug(f"Formatted response: {formatted_text}")
-            
             await message.reply_text(
                 formatted_text,
                 parse_mode=ParseMode.HTML
@@ -859,6 +827,7 @@ async def set_bot_commands(application):
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
         ("balance", "Check $SQR token balance"),  # Added balance command
+        ("sqr_info", "Get information about $SQR token"),
         ("request_member", "Request to become a sqrDAO member")
     ]
     
@@ -1292,7 +1261,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wallet_address = None
     display_address = input_address
     if input_address.lower().endswith('.sol') or not (input_address.startswith('1') or input_address.startswith('2') or input_address.startswith('3') or input_address.startswith('4') or input_address.startswith('5') or input_address.startswith('6') or input_address.startswith('7') or input_address.startswith('8') or input_address.startswith('9')):
-        logger.info(f"Resolving SNS domain: {input_address}")
         resolved_address = await resolve_sns_domain(input_address)
         if resolved_address:
             wallet_address = resolved_address
@@ -1307,8 +1275,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wallet_address = input_address
         display_address = f"{wallet_address[:4]}...{wallet_address[-4:]}"
 
-    logger.info(f"Checking balance for wallet: {wallet_address} and token: {token_mint}")
-
     try:
         # Validate addresses
         try:
@@ -1317,7 +1283,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             token_program_id = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
             # Create a dummy keypair as payer since we're only reading data
             dummy_payer = Keypair()
-            logger.info("Successfully validated addresses and created token program ID")
         except ValueError:
             await update.message.reply_text(
                 "❌ Invalid wallet address format.",
@@ -1332,11 +1297,9 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             program_id=token_program_id,
             payer=dummy_payer
         )
-        logger.info("Successfully initialized Token client")
 
         # Get token accounts
         token_accounts = token.get_accounts_by_owner_json_parsed(owner=wallet_pubkey)
-        logger.info(f"Retrieved token accounts: {token_accounts}")
         
         if not token_accounts or not token_accounts.value:
             await update.message.reply_text(
@@ -1347,30 +1310,21 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Get balance from the first account
         account = token_accounts.value[0]
-        logger.info(f"First account data: {account}")
         
         # Access the parsed data structure correctly
         token_amount = account.account.data.parsed['info']['tokenAmount']
-        logger.info(f"Token amount data: {token_amount}")
         
         balance = int(token_amount['amount'])
         decimals = token_amount['decimals']
         actual_balance = balance / (10 ** decimals)
-        logger.info(f"Calculated balance: {actual_balance} (raw: {balance}, decimals: {decimals})")
 
         # Get token metadata using RPC directly
         try:
-            logger.info("Fetching token metadata...")
             # Get token metadata from the RPC
             token_metadata = solana_client.get_account_info_json_parsed(Pubkey.from_string(token_mint))
-            logger.info(f"Raw token metadata response: {token_metadata}")
             
             if token_metadata and token_metadata.value:
-                logger.info(f"Token metadata value: {token_metadata.value}")
-                logger.info(f"Token metadata parsed data: {token_metadata.value.data.parsed}")
-                
                 mint_data = token_metadata.value.data.parsed
-                logger.info(f"Mint data: {mint_data}")
                 
                 # Find the tokenMetadata extension
                 token_metadata_ext = next((ext for ext in mint_data['info']['extensions'] 
@@ -1379,13 +1333,10 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if token_metadata_ext:
                     token_name = token_metadata_ext['state'].get('name', 'Unknown Token')
                     token_symbol = token_metadata_ext['state'].get('symbol', '???')
-                    logger.info(f"Extracted token name: {token_name}, symbol: {token_symbol}")
                 else:
-                    logger.warning("No tokenMetadata extension found")
                     token_name = 'Unknown Token'
                     token_symbol = '???'
             else:
-                logger.warning("No token metadata found in response")
                 token_name = 'Unknown Token'
                 token_symbol = '???'
         except Exception as e:
@@ -1542,11 +1493,10 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         old_status = update.my_chat_member.old_chat_member.status if update.my_chat_member.old_chat_member else None
         new_status = update.my_chat_member.new_chat_member.status if update.my_chat_member.new_chat_member else None
         
-        logger.info(f"Bot status changed in chat {chat.title} ({chat.id}) from {old_status} to {new_status}")
-        
+        logger.debug(f"Group status update: {chat.title} (ID: {chat.id}) - Old Status: {old_status}, New Status: {new_status}")
+
         # Bot was added to a group
         if new_status in ['member', 'administrator'] and old_status in [None, 'left', 'kicked']:
-            # Check if this group is already in our list
             if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
                 GROUP_MEMBERS.append({
                     'id': chat.id,
@@ -1554,20 +1504,31 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
                     'type': chat.type,
                     'added_at': datetime.now().isoformat()
                 })
-                logger.info(f"Added new group: {chat.title} ({chat.id})")
                 save_groups_to_knowledge()
+                logger.info(f"Added group: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
         
         # Bot was removed from a group
         elif new_status in ['left', 'kicked'] and old_status in ['member', 'administrator']:
-            # Remove from our list if present
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
-            logger.info(f"Removed group: {chat.title} ({chat.id})")
             save_groups_to_knowledge()
+            logger.info(f"Removed group: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
+        
+        # Handle group migration to supergroup
+        elif (old_status == 'member' and new_status == 'supergroup') or (old_status == 'group' and new_status == 'supergroup'):
+            logger.info(f"Group {chat.title} (ID: {chat.id}) has migrated to a supergroup.")
+            logger.debug(f"Checking migration condition: Old Status: {old_status}, New Status: {new_status}")
+            for group in GROUP_MEMBERS:
+                if group['id'] == update.my_chat_member.chat.id:
+                    logger.debug(f"Updating group ID for migrated group: {group['title']} from {group['id']} to {chat.id}")
+                    group['id'] = chat.id  # Update to new supergroup ID
+                    group['type'] = 'supergroup'  # Update type to supergroup
+                    save_groups_to_knowledge()
+                    logger.info(f"Updated group ID for migrated group: {group['title']} to new ID: {chat.id}")
+                    break  # Exit the loop after updating the group ID
     
     # Also check normal message updates from groups
     elif update.message and update.message.chat.type in ['group', 'supergroup']:
         chat = update.message.chat
-        # If this is a group message and the group is not in our list, add it
         if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
             GROUP_MEMBERS.append({
                 'id': chat.id,
@@ -1575,8 +1536,8 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
                 'type': chat.type,
                 'added_at': datetime.now().isoformat()
             })
-            logger.info(f"Added group from message: {chat.title} ({chat.id})")
             save_groups_to_knowledge()
+            logger.info(f"Added group from message: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
 
 # Replace the get_bot_groups function with this simpler version
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
@@ -1586,7 +1547,6 @@ async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
         if hasattr(context, 'message') and context.message and context.message.chat:
             chat = context.message.chat
             if chat.type in ['group', 'supergroup'] and not any(g['id'] == chat.id for g in GROUP_MEMBERS):
-                logger.info(f"Adding current message chat to groups: {chat.title} ({chat.id})")
                 GROUP_MEMBERS.append({
                     'id': chat.id,
                     'title': chat.title,
@@ -1597,7 +1557,6 @@ async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
     except Exception as e:
         logger.error(f"Error checking current chat: {str(e)}")
     
-    logger.info(f"Found {len(GROUP_MEMBERS)} groups in database")
     return GROUP_MEMBERS
 
 # Add this command to manually add a group
@@ -1728,7 +1687,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ Please provide a message to send.\n"
             "Usage: /mass_message [message]\n"
-            "Example: /mass_message Hello everyone!\nThis is an important announcement.",
+            "Example: /mass_message Testing",
             parse_mode=ParseMode.HTML
         )
         return
@@ -1760,33 +1719,23 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     failed_users = []
     failed_groups = []
     
-    # Send message to each valid user
-    for user in valid_users:
-        try:
-            await context.bot.send_message(
-                chat_id=user['user_id'],
-                text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
-                parse_mode=ParseMode.HTML
-            )
-            user_success_count += 1
-        except Exception as e:
-            user_failure_count += 1
-            failed_users.append(f"@{user['username']}")
-            logger.error(f"Failed to send message to user {user['username']}: {str(e)}")
-    
-    # Send message to each group
+    logger.debug(f"Starting mass message with message: {message}")
+
     for group in all_groups:
         try:
+            logger.info(f"Sending message to group {group['title']} (ID: {group['id']})")
+
             await context.bot.send_message(
                 chat_id=group['id'],
                 text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
                 parse_mode=ParseMode.HTML
             )
             group_success_count += 1
+            
         except Exception as e:
             group_failure_count += 1
             failed_groups.append(f"{group['title']} ({group['type']})")
-            logger.error(f"Failed to send message to group {group['title']}: {str(e)}")
+            logger.error(f"Failed to send message to group {group['title']} (ID: {group['id']}): {str(e)}")
     
     # Send summary to the sender
     summary = f"✅ Message delivery complete!\n\n"
@@ -1804,12 +1753,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary += f"\n\n📊 Group Statistics:\n"
     summary += f"• Successfully sent: {group_success_count}\n"
     summary += f"• Failed to send: {group_failure_count}\n"
-    
-    if failed_groups:
-        summary += f"\n❌ Failed to send to groups:\n"
-        summary += "\n".join(f"• {group}" for group in failed_groups[:5])  # Show first 5 failed groups
-        if len(failed_groups) > 5:
-            summary += f"\n... and {len(failed_groups) - 5} more groups"
     
     await update.message.reply_text(summary, parse_mode=ParseMode.HTML)
 
