@@ -16,7 +16,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - 👥 Member management system
 - 💬 Group chat support
 - 🔍 Web search capabilities
-- 💰 SQR token balance checking
+- 💰 SQR token functions (information & balance checking)
 - 📢 Mass messaging system
 
 ### Member Management
