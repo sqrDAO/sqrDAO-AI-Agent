@@ -1508,6 +1508,16 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
             # Remove from our list if present
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
             save_groups_to_knowledge()
+        
+        # Handle group migration to supergroup
+        elif old_status == 'member' and new_status == 'supergroup':
+            # Update the group ID in our list
+            for group in GROUP_MEMBERS:
+                if group['id'] == update.my_chat_member.chat.id:
+                    group['id'] = chat.id  # Update to new supergroup ID
+                    group['type'] = 'supergroup'  # Update type to supergroup
+                    save_groups_to_knowledge()
+                    logger.info(f"Updated group ID for migrated group: {group['title']} to new ID: {chat.id}")
     
     # Also check normal message updates from groups
     elif update.message and update.message.chat.type in ['group', 'supergroup']:
@@ -1664,13 +1674,24 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /mass_message command - Send a message to all regular users and groups."""
     # Get the message text by removing the command
-    message = update.message.text.replace('/mass_message', '').strip()
+    message_parts = update.message.text.replace('/mass_message', '').strip().split('|')
+    
+    if len(message_parts) < 2:
+        await update.message.reply_text(
+            "❌ Please provide a topic channel and a message to send.\n"
+            "Usage: /mass_message [topic_channel] | [message]\n"
+            "Example: /mass_message #announcements | Hello everyone!\nThis is an important announcement.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    topic_channel = message_parts[0].strip()
+    message = message_parts[1].strip()
     
     if not message:
         await update.message.reply_text(
             "❌ Please provide a message to send.\n"
-            "Usage: /mass_message [message]\n"
-            "Example: /mass_message Hello everyone!\nThis is an important announcement.",
+            "Usage: /mass_message [topic_channel] | [message]",
             parse_mode=ParseMode.HTML
         )
         return
@@ -1716,19 +1737,43 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             failed_users.append(f"@{user['username']}")
             logger.error(f"Failed to send message to user {user['username']}: {str(e)}")
     
-    # Send message to each group
+    # Logic to send messages to groups
+    topic_found = False
     for group in all_groups:
         try:
-            await context.bot.send_message(
-                chat_id=group['id'],
-                text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
-                parse_mode=ParseMode.HTML
-            )
-            group_success_count += 1
+            # Check if the group title matches the specified topic channel
+            if topic_channel.lower() in group.get('title', '').lower():
+                # Retrieve the message_thread_id for the topic
+                message_thread_id = group.get('message_thread_id')  # Ensure this is correctly populated
+                
+                await context.bot.send_message(
+                    chat_id=group['id'],
+                    text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
+                    parse_mode=ParseMode.HTML,
+                    message_thread_id=message_thread_id  # Send to the specific topic
+                )
+                group_success_count += 1
+                topic_found = True  # Mark that we found a matching topic
+            
         except Exception as e:
             group_failure_count += 1
             failed_groups.append(f"{group['title']} ({group['type']})")
             logger.error(f"Failed to send message to group {group['title']}: {str(e)}")
+    
+    # If no matching topic was found, send to all groups as default
+    if not topic_found:
+        for group in all_groups:
+            try:
+                await context.bot.send_message(
+                    chat_id=group['id'],
+                    text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
+                    parse_mode=ParseMode.HTML
+                )
+                group_success_count += 1
+            except Exception as e:
+                group_failure_count += 1
+                failed_groups.append(f"{group['title']} ({group['type']})")
+                logger.error(f"Failed to send message to group {group['title']}: {str(e)}")
     
     # Send summary to the sender
     summary = f"✅ Message delivery complete!\n\n"
