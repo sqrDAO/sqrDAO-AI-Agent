@@ -1730,14 +1730,14 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not valid_users and not all_groups:
         await update.message.reply_text(
-            "❌ No valid users or groups found to send the message to.",
+            "❌ No valid users or groups/channels found to send the message to.",
             parse_mode=ParseMode.HTML
         )
         return
     
     # Send confirmation to the sender
     await update.message.reply_text(
-        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(all_groups)} groups...",
+        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(all_groups)} groups/channels...",
         parse_mode=ParseMode.HTML
     )
     
