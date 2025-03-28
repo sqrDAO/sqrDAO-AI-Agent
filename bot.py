@@ -1529,7 +1529,7 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif update.my_chat_member and update.my_chat_member.chat.type == 'supergroup':
         old_status = update.my_chat_member.old_chat_member.status if update.my_chat_member.old_chat_member else None
         if old_status in ['member', 'administrator']:
-            logger.info(f"Group {chat.title} (ID: {chat.id}) has migrated to a supergroup.")
+            logger.info(f"Group {update.my_chat_member.chat.title} (ID: {update.my_chat_member.chat.id}) has migrated to a supergroup.")
             for group in GROUP_MEMBERS:
                 if group['id'] == update.my_chat_member.chat.id:
                     group['id'] = chat.id  # Update to new supergroup ID
@@ -1791,7 +1791,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary += f"• Successfully sent: {user_success_count}\n"
     summary += f"• Failed to send: {user_failure_count}\n"
     
-    summary += f"\n\n📊 Group/Channel Statistics:\n"
+    summary += "\n\n📊 Group/Channel Statistics:\n"
     summary += f"• Successfully sent: {group_success_count}\n"
     summary += f"• Failed to send: {group_failure_count}\n"
     
