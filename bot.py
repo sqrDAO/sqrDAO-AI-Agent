@@ -60,9 +60,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize empty members lists
+# Initialize empty lists
 AUTHORIZED_MEMBERS = []
 MEMBERS = []
+GROUP_MEMBERS = []  # Store groups where the bot is a member
 
 # Global variable to store the bot's ID
 bot_id = None
@@ -71,8 +72,6 @@ bot_id = None
 SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
 solana_client = Client(SOLANA_RPC_URL)
 
-# Add this to the global variables section, after MEMBERS declaration
-GROUP_MEMBERS = []  # Store groups where the bot is a member
 
 def load_members_from_knowledge():
     """Load regular members from the knowledge base and authorized members from config.json."""
@@ -128,8 +127,14 @@ def load_members_from_knowledge():
 def save_members_to_knowledge():
     """Save regular members to the knowledge base."""
     try:
-        # Save regular members only
-        db.store_knowledge("members", json.dumps(MEMBERS))
+        logger.info("Saving members to knowledge base...")  # Log when saving starts
+        
+        # Create a dictionary to filter out duplicates by user_id
+        unique_members = {member['user_id']: member for member in MEMBERS}.values()
+        
+        # Save unique members
+        db.store_knowledge("members", json.dumps(list(unique_members)))
+        logger.info("Successfully saved members to knowledge base.")  # Log success
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
@@ -169,16 +174,22 @@ def load_groups_from_knowledge():
         GROUP_MEMBERS = []
 
 def save_groups_to_knowledge():
+    global GROUP_MEMBERS
     """Save groups to the knowledge base."""
     try:
         logger.info("Saving groups to knowledge base...")  # Log when saving starts
-        # Save groups
-        db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
+        
+        # Create a dictionary to filter out duplicates by ID
+        unique_groups = {group['id']: group for group in GROUP_MEMBERS}.values()
+        
+        # Save unique groups
+        db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
         logger.info(f"Successfully saved groups to knowledge base.")  # Log success
     except Exception as e:
         logger.error(f"Error saving groups to knowledge base: {str(e)}")
 
 def delete_groups_from_knowledge():
+    global GROUP_MEMBERS
     """Delete all groups from the knowledge base and save the current GROUP_MEMBERS list."""
     try:
         logger.info("Deleting all groups from knowledge base...")
@@ -191,8 +202,12 @@ def delete_groups_from_knowledge():
         logger.info("Successfully cleared old group entries from knowledge base.")
         
         # Now save the current GROUP_MEMBERS list (which already has the group removed)
-        db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
-        logger.info(f"Successfully saved updated groups to knowledge base.")
+        # Create a dictionary to filter out duplicates by ID
+        unique_groups = {group['id']: group for group in GROUP_MEMBERS}.values()
+        
+        # Save unique groups
+        db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
+        logger.info(f"Successfully saved updated groups to knowledge base: {list(unique_groups)}")
     except Exception as e:
         logger.error(f"Error updating groups in knowledge base: {str(e)}")
 
@@ -1505,14 +1520,14 @@ async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Add this handler to detect when bot is added to or removed from groups
 async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Track when bot is added to or removed from a group or channel, or when a group is migrated to a supergroup."""
-    global GROUP_MEMBERS
+    global GROUP_MEMBERS  # Add global declaration
     
     # Check for my_chat_member updates
     if update.my_chat_member and update.my_chat_member.chat.type in ['group', 'supergroup', 'channel']:
         chat = update.my_chat_member.chat
         new_status = update.my_chat_member.new_chat_member.status if update.my_chat_member.new_chat_member else None
         
-        logger.debug(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
+        logger.info(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
 
         # Bot was added to a group or channel
         if new_status in ['member', 'administrator']:
@@ -1527,33 +1542,15 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # Bot was removed from a group or channel
         elif new_status in ['left', 'kicked']:
+            # Remove the group from GROUP_MEMBERS
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
-            save_groups_to_knowledge()
-    
-    # Also check normal message updates from groups
-    elif update.message and update.message.chat.type in ['group', 'supergroup', 'channel']:
-        chat = update.message.chat
-        if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
-            GROUP_MEMBERS.append({
-                'id': chat.id,
-                'title': chat.title,
-                'type': chat.type,
-                'added_at': datetime.now().isoformat()
-            })
-            save_groups_to_knowledge()
-    
-    # Handle group migration to supergroup
-    elif update.my_chat_member and update.my_chat_member.chat.type == 'supergroup':
-        old_status = update.my_chat_member.old_chat_member.status if update.my_chat_member.old_chat_member else None
-        if old_status in ['member', 'administrator']:
-            logger.info(f"Group {update.my_chat_member.chat.title} (ID: {update.my_chat_member.chat.id}) has migrated to a supergroup.")
-            for group in GROUP_MEMBERS:
-                if group['id'] == update.my_chat_member.chat.id:
-                    group['id'] = chat.id  # Update to new supergroup ID
-                    group['type'] = 'supergroup'  # Update type to supergroup
-                    save_groups_to_knowledge()
-                    logger.info(f"Updated group ID for migrated group: {group['title']} to new ID: {chat.id}")
-                    break  # Exit the loop after updating the group ID
+            logger.info(f"Successfully removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
+            
+            # Delete all groups from knowledge base and save the updated GROUP_MEMBERS
+            delete_groups_from_knowledge()
+            
+            # Reload groups from knowledge base to ensure consistency
+            # load_groups_from_knowledge()
 
 # Replace the get_bot_groups function with this simpler version
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
@@ -1635,6 +1632,8 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @is_member
 async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /list_groups command - List all tracked groups and channels."""
+    global GROUP_MEMBERS
+
     if not GROUP_MEMBERS:
         await update.message.reply_text(
             "📝 No groups or channels found.",
@@ -1642,6 +1641,8 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    logger.info(f"Successfully saved updated groups to knowledge base: {GROUP_MEMBERS}")
+
     groups_text = "<b>Current Groups and Channels:</b>\n\n"
     for group in GROUP_MEMBERS:
         # Escape special characters in title
@@ -1668,8 +1669,8 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @is_member
 async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /remove_group command - Remove a group ID."""
-    global GROUP_MEMBERS  # Declare GROUP_MEMBERS as global
-
+    global GROUP_MEMBERS  # Add global declaration
+    
     if not context.args:
         await update.message.reply_text(
             "<b>❌ Please provide a group ID to remove.</b>\n"
