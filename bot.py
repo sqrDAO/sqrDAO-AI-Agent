@@ -60,9 +60,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize empty members lists
+# Initialize empty lists
 AUTHORIZED_MEMBERS = []
 MEMBERS = []
+GROUP_MEMBERS = []  # Store groups where the bot is a member
 
 # Global variable to store the bot's ID
 bot_id = None
@@ -71,8 +72,6 @@ bot_id = None
 SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
 solana_client = Client(SOLANA_RPC_URL)
 
-# Add this to the global variables section, after MEMBERS declaration
-GROUP_MEMBERS = []  # Store groups where the bot is a member
 
 def load_members_from_knowledge():
     """Load regular members from the knowledge base and authorized members from config.json."""
@@ -128,8 +127,14 @@ def load_members_from_knowledge():
 def save_members_to_knowledge():
     """Save regular members to the knowledge base."""
     try:
-        # Save regular members only
-        db.store_knowledge("members", json.dumps(MEMBERS))
+        logger.info("Saving members to knowledge base...")  # Log when saving starts
+        
+        # Create a dictionary to filter out duplicates by user_id
+        unique_members = {member['user_id']: member for member in MEMBERS}.values()
+        
+        # Save unique members
+        db.store_knowledge("members", json.dumps(list(unique_members)))
+        logger.info("Successfully saved members to knowledge base.")  # Log success
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
@@ -169,12 +174,42 @@ def load_groups_from_knowledge():
         GROUP_MEMBERS = []
 
 def save_groups_to_knowledge():
+    global GROUP_MEMBERS
     """Save groups to the knowledge base."""
     try:
-        # Save groups
-        db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
+        logger.info("Saving groups to knowledge base...")  # Log when saving starts
+        
+        # Create a dictionary to filter out duplicates by ID
+        unique_groups = {group['id']: group for group in GROUP_MEMBERS}.values()
+        
+        # Save unique groups
+        db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
+        logger.info(f"Successfully saved groups to knowledge base.")  # Log success
     except Exception as e:
         logger.error(f"Error saving groups to knowledge base: {str(e)}")
+
+def delete_groups_from_knowledge():
+    global GROUP_MEMBERS
+    """Delete all groups from the knowledge base and save the current GROUP_MEMBERS list."""
+    try:
+        logger.info("Deleting all groups from knowledge base...")
+        # First, delete all existing bot_groups entries
+        db.cursor.execute('''
+            DELETE FROM knowledge_base
+            WHERE topic = 'bot_groups'
+        ''')
+        db.conn.commit()
+        logger.info("Successfully cleared old group entries from knowledge base.")
+        
+        # Now save the current GROUP_MEMBERS list (which already has the group removed)
+        # Create a dictionary to filter out duplicates by ID
+        unique_groups = {group['id']: group for group in GROUP_MEMBERS}.values()
+        
+        # Save unique groups
+        db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
+        logger.info(f"Successfully saved updated groups to knowledge base: {list(unique_groups)}")
+    except Exception as e:
+        logger.error(f"Error updating groups in knowledge base: {str(e)}")
 
 class Database:
     def __init__(self):
@@ -1485,14 +1520,14 @@ async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Add this handler to detect when bot is added to or removed from groups
 async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Track when bot is added to or removed from a group or channel, or when a group is migrated to a supergroup."""
-    global GROUP_MEMBERS
+    global GROUP_MEMBERS  # Add global declaration
     
     # Check for my_chat_member updates
     if update.my_chat_member and update.my_chat_member.chat.type in ['group', 'supergroup', 'channel']:
         chat = update.my_chat_member.chat
         new_status = update.my_chat_member.new_chat_member.status if update.my_chat_member.new_chat_member else None
         
-        logger.debug(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
+        logger.info(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
 
         # Bot was added to a group or channel
         if new_status in ['member', 'administrator']:
@@ -1504,39 +1539,18 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
                     'added_at': datetime.now().isoformat()
                 })
                 save_groups_to_knowledge()
-                logger.info(f"Added group/channel: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
         
         # Bot was removed from a group or channel
         elif new_status in ['left', 'kicked']:
+            # Remove the group from GROUP_MEMBERS
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
-            save_groups_to_knowledge()
-            logger.info(f"Removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
-    
-    # Also check normal message updates from groups
-    elif update.message and update.message.chat.type in ['group', 'supergroup', 'channel']:
-        chat = update.message.chat
-        if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
-            GROUP_MEMBERS.append({
-                'id': chat.id,
-                'title': chat.title,
-                'type': chat.type,
-                'added_at': datetime.now().isoformat()
-            })
-            save_groups_to_knowledge()
-            logger.info(f"Added group from message: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
-    
-    # Handle group migration to supergroup
-    elif update.my_chat_member and update.my_chat_member.chat.type == 'supergroup':
-        old_status = update.my_chat_member.old_chat_member.status if update.my_chat_member.old_chat_member else None
-        if old_status in ['member', 'administrator']:
-            logger.info(f"Group {chat.title} (ID: {chat.id}) has migrated to a supergroup.")
-            for group in GROUP_MEMBERS:
-                if group['id'] == update.my_chat_member.chat.id:
-                    group['id'] = chat.id  # Update to new supergroup ID
-                    group['type'] = 'supergroup'  # Update type to supergroup
-                    save_groups_to_knowledge()
-                    logger.info(f"Updated group ID for migrated group: {group['title']} to new ID: {chat.id}")
-                    break  # Exit the loop after updating the group ID
+            logger.info(f"Successfully removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
+            
+            # Delete all groups from knowledge base and save the updated GROUP_MEMBERS
+            delete_groups_from_knowledge()
+            
+            # Reload groups from knowledge base to ensure consistency
+            # load_groups_from_knowledge()
 
 # Replace the get_bot_groups function with this simpler version
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
@@ -1618,7 +1632,8 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @is_member
 async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /list_groups command - List all tracked groups and channels."""
-    logger.debug(f"Current GROUP_MEMBERS: {GROUP_MEMBERS}")  # Log current members
+    global GROUP_MEMBERS
+
     if not GROUP_MEMBERS:
         await update.message.reply_text(
             "📝 No groups or channels found.",
@@ -1626,6 +1641,8 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    logger.info(f"Successfully saved updated groups to knowledge base: {GROUP_MEMBERS}")
+
     groups_text = "<b>Current Groups and Channels:</b>\n\n"
     for group in GROUP_MEMBERS:
         # Escape special characters in title
@@ -1652,6 +1669,8 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @is_member
 async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /remove_group command - Remove a group ID."""
+    global GROUP_MEMBERS  # Add global declaration
+    
     if not context.args:
         await update.message.reply_text(
             "<b>❌ Please provide a group ID to remove.</b>\n"
@@ -1665,13 +1684,16 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         group_id = int(context.args[0])
         
-        # Find and remove the group
-        group = next((g for g in GROUP_MEMBERS if g['id'] == group_id), None)
-        if group:
-            GROUP_MEMBERS.remove(group)
-            save_groups_to_knowledge()
+        # Remove all groups with the specified ID
+        initial_count = len(GROUP_MEMBERS)
+        GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != group_id]
+        removed_count = initial_count - len(GROUP_MEMBERS)
+
+        if removed_count > 0:
+            # Update the knowledge base with the new GROUP_MEMBERS list
+            delete_groups_from_knowledge()
             await update.message.reply_text(
-                f"<b>✅ Successfully removed group:</b> {group['title']} ({group_id})",
+                f"<b>✅ Successfully removed {removed_count} group(s) with ID:</b> {group_id}",
                 parse_mode=ParseMode.HTML
             )
         else:
@@ -1697,27 +1719,39 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if there's an image attached
     photo = None
     caption = None
+    grouptype = None
     
+    # Check if there are enough arguments
+    if len(context.args) < 1:  # At least a message and a grouptype
+        await update.message.reply_text(
+            "❌ Please provide a message and an optional grouptype.\n"
+            "Usage:\n"
+            "• /mass_message [message] | [grouptype]\n"
+            "• Example: /mass_message Hello everyone | sqrdao\n"
+            "If grouptype is 'sqrdao', the message will only be sent to groups/channels with 'sqrdao' in their title.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Check if the separator is present in the arguments
+    if "|" in context.args:
+        # Split the arguments into message parts and grouptype
+        separator_index = context.args.index("|")
+        message_parts = context.args[:separator_index]  # All arguments before the separator
+        grouptype = context.args[separator_index + 1].strip().lower() if separator_index + 1 < len(context.args) else None
+        
+        # Join the message parts into a single string
+        message = " ".join(message_parts).strip()
+    else:
+        message = " ".join(context.args)  # If no separator, treat all as message
+
     if update.message.photo:
         # Get the largest photo size
         photo = update.message.photo[-1].file_id
         caption = update.message.caption if update.message.caption else ""
-    elif update.message.text:
-        # Get the message text by removing the command
-        message = update.message.text.replace('/mass_message', '').strip()
-        
-        if not message:
-            await update.message.reply_text(
-                "❌ Please provide a message or image to send.\n"
-                "Usage:\n"
-                "• Text only: /mass_message [message]\n"
-                "• Image: Send an image with optional caption and add /mass_message in the caption",
-                parse_mode=ParseMode.HTML
-            )
-            return
-    else:
+    elif not message:
         await update.message.reply_text(
-            "❌ Please provide either a text message or an image.",
+            "❌ Please provide a message or image to send.",
             parse_mode=ParseMode.HTML
         )
         return
@@ -1727,8 +1761,14 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Get all groups and channels where the bot is a member
     all_groups = await get_bot_groups(context)
-    
-    if not valid_users and not all_groups:
+
+    # Filter groups based on grouptype if specified
+    if grouptype == "sqrdao":
+        filtered_groups = [g for g in all_groups if "sqrdao" in g['title'].lower()]
+    else:
+        filtered_groups = all_groups
+
+    if not valid_users and not filtered_groups:
         await update.message.reply_text(
             "❌ No valid users or groups/channels found to send the message to.",
             parse_mode=ParseMode.HTML
@@ -1736,8 +1776,9 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Send confirmation to the sender
+    group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else ""
     await update.message.reply_text(
-        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(all_groups)} groups/channels...",
+        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
         parse_mode=ParseMode.HTML
     )
     
@@ -1748,13 +1789,9 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_failure_count = 0
     failed_users = []
     failed_groups = []
-    
-    logger.debug(f"Starting mass message with {'image' if photo else 'message'}")
 
-    for group in all_groups:
+    for group in filtered_groups:
         try:
-            logger.info(f"Sending to group/channel {group['title']} (ID: {group['id']})")
-
             if photo:
                 # Send photo with caption, stripping the command if present
                 formatted_caption = f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
@@ -1781,6 +1818,9 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send summary to the sender
     summary = f"✅ {'Image' if photo else 'Message'} delivery complete!\n\n"
     
+    if grouptype == "sqrdao":
+        summary += "📝 Message was sent to sqrDAO groups only\n\n"
+    
     if failed_users:
         summary += f"❌ Failed to send to users:\n"
         summary += "\n".join(f"• {user}" for user in failed_users[:5])
@@ -1791,7 +1831,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary += f"• Successfully sent: {user_success_count}\n"
     summary += f"• Failed to send: {user_failure_count}\n"
     
-    summary += f"\n\n📊 Group/Channel Statistics:\n"
+    summary += "\n\n📊 Group/Channel Statistics:\n"
     summary += f"• Successfully sent: {group_success_count}\n"
     summary += f"• Failed to send: {group_failure_count}\n"
     
@@ -1885,7 +1925,7 @@ def main():
         ))
 
         # Start the Bot
-        logger.info("Starting bot...")
+        logger.info("Starting bot...")  # This can be kept for clarity
         application.post_init = set_bot_commands
         
         # Start polling and set the bot ID after the bot is running
