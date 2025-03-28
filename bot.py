@@ -127,14 +127,11 @@ def load_members_from_knowledge():
 def save_members_to_knowledge():
     """Save regular members to the knowledge base."""
     try:
-        logger.info("Saving members to knowledge base...")  # Log when saving starts
-        
         # Create a dictionary to filter out duplicates by user_id
         unique_members = {member['user_id']: member for member in MEMBERS}.values()
         
         # Save unique members
         db.store_knowledge("members", json.dumps(list(unique_members)))
-        logger.info("Successfully saved members to knowledge base.")  # Log success
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
@@ -177,14 +174,11 @@ def save_groups_to_knowledge():
     global GROUP_MEMBERS
     """Save groups to the knowledge base."""
     try:
-        logger.info("Saving groups to knowledge base...")  # Log when saving starts
-        
         # Create a dictionary to filter out duplicates by ID
         unique_groups = {group['id']: group for group in GROUP_MEMBERS}.values()
         
         # Save unique groups
         db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
-        logger.info(f"Successfully saved groups to knowledge base.")  # Log success
     except Exception as e:
         logger.error(f"Error saving groups to knowledge base: {str(e)}")
 
@@ -192,14 +186,12 @@ def delete_groups_from_knowledge():
     global GROUP_MEMBERS
     """Delete all groups from the knowledge base and save the current GROUP_MEMBERS list."""
     try:
-        logger.info("Deleting all groups from knowledge base...")
         # First, delete all existing bot_groups entries
         db.cursor.execute('''
             DELETE FROM knowledge_base
             WHERE topic = 'bot_groups'
         ''')
         db.conn.commit()
-        logger.info("Successfully cleared old group entries from knowledge base.")
         
         # Now save the current GROUP_MEMBERS list (which already has the group removed)
         # Create a dictionary to filter out duplicates by ID
@@ -207,7 +199,6 @@ def delete_groups_from_knowledge():
         
         # Save unique groups
         db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
-        logger.info(f"Successfully saved updated groups to knowledge base: {list(unique_groups)}")
     except Exception as e:
         logger.error(f"Error updating groups in knowledge base: {str(e)}")
 
@@ -506,7 +497,6 @@ try:
     
     # Test the model with a simple prompt
     test_response = model.generate_content("Hello")
-    logger.info("Successfully tested model with 'Hello' prompt")
     logger.debug(f"Test response: {test_response.text if hasattr(test_response, 'text') else 'No text attribute'}")
     
 except Exception as e:
@@ -972,7 +962,8 @@ async def get_sqr_info_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"📈 24h Change: {price_change_24h}%\n"
                 f"📊 24h Volume: {volume_24h}\n"
                 f"💎 Market Cap: {market_cap}\n\n"
-                "Data provided by GeckoTerminal"
+                "Data provided by GeckoTerminal\n\n"
+                "Buy SQR on Jupiter: https://jup.ag/swap/SOL-SQR"
             )
             
             await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
@@ -1415,7 +1406,6 @@ async def check_transaction_status(signature: str, command_start_time: datetime)
         # Convert signature string to Signature object
         try:
             signature_obj = Signature.from_string(signature)
-            logger.info(f"Successfully converted signature string to Signature object: {signature_obj}")
         except Exception as e:
             return False, f"❌ Error converting signature format: {str(e)}"
             
@@ -1527,7 +1517,7 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         chat = update.my_chat_member.chat
         new_status = update.my_chat_member.new_chat_member.status if update.my_chat_member.new_chat_member else None
         
-        logger.info(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
+        logger.debug(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
 
         # Bot was added to a group or channel
         if new_status in ['member', 'administrator']:
@@ -1544,7 +1534,7 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif new_status in ['left', 'kicked']:
             # Remove the group from GROUP_MEMBERS
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
-            logger.info(f"Successfully removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
+            logger.debug(f"Successfully removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
             
             # Delete all groups from knowledge base and save the updated GROUP_MEMBERS
             delete_groups_from_knowledge()
@@ -1640,8 +1630,6 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
         return
-    
-    logger.info(f"Successfully saved updated groups to knowledge base: {GROUP_MEMBERS}")
 
     groups_text = "<b>Current Groups and Channels:</b>\n\n"
     for group in GROUP_MEMBERS:
@@ -1925,7 +1913,7 @@ def main():
         ))
 
         # Start the Bot
-        logger.info("Starting bot...")  # This can be kept for clarity
+        logger.debug("Starting bot...")  # This can be kept for clarity
         application.post_init = set_bot_commands
         
         # Start polling and set the bot ID after the bot is running
