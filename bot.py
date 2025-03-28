@@ -174,7 +174,7 @@ def save_groups_to_knowledge():
         logger.info("Saving groups to knowledge base...")  # Log when saving starts
         # Save groups
         db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
-        logger.info(f"Successfully saved groups to knowledge base: {db.get_knowledge('bot_groups')}")  # Log success
+        logger.info(f"Successfully saved groups to knowledge base.")  # Log success
     except Exception as e:
         logger.error(f"Error saving groups to knowledge base: {str(e)}")
 
@@ -192,7 +192,7 @@ def delete_groups_from_knowledge():
         
         # Now save the current GROUP_MEMBERS list (which already has the group removed)
         db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
-        logger.info(f"Successfully saved updated groups to knowledge base: {GROUP_MEMBERS}")
+        logger.info(f"Successfully saved updated groups to knowledge base.")
     except Exception as e:
         logger.error(f"Error updating groups in knowledge base: {str(e)}")
 
@@ -1524,13 +1524,11 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
                     'added_at': datetime.now().isoformat()
                 })
                 save_groups_to_knowledge()
-                logger.info(f"Added group/channel: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
         
         # Bot was removed from a group or channel
         elif new_status in ['left', 'kicked']:
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
             save_groups_to_knowledge()
-            logger.info(f"Removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
     
     # Also check normal message updates from groups
     elif update.message and update.message.chat.type in ['group', 'supergroup', 'channel']:
@@ -1543,7 +1541,6 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
                 'added_at': datetime.now().isoformat()
             })
             save_groups_to_knowledge()
-            logger.info(f"Added group from message: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
     
     # Handle group migration to supergroup
     elif update.my_chat_member and update.my_chat_member.chat.type == 'supergroup':
@@ -1638,7 +1635,6 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @is_member
 async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /list_groups command - List all tracked groups and channels."""
-    logger.info(f"Current GROUP_MEMBERS: {db.get_knowledge('bot_groups')}")  # Log current members from knowledge base
     if not GROUP_MEMBERS:
         await update.message.reply_text(
             "📝 No groups or channels found.",
@@ -1748,9 +1744,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message = " ".join(context.args)  # If no separator, treat all as message
 
-    logger.info(f"Message to send: '{message}'")
-    logger.info(f"Grouptype specified: '{grouptype}'")
-
     if update.message.photo:
         # Get the largest photo size
         photo = update.message.photo[-1].file_id
@@ -1767,15 +1760,12 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Get all groups and channels where the bot is a member
     all_groups = await get_bot_groups(context)
-    logger.info(f"All groups: {all_groups}")
 
     # Filter groups based on grouptype if specified
     if grouptype == "sqrdao":
         filtered_groups = [g for g in all_groups if "sqrdao" in g['title'].lower()]
-        logger.info(f"Filtered groups (sqrdao): {filtered_groups}")
     else:
         filtered_groups = all_groups
-        logger.info("No filtering applied, sending to all groups.")
 
     if not valid_users and not filtered_groups:
         await update.message.reply_text(
@@ -1798,13 +1788,9 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_failure_count = 0
     failed_users = []
     failed_groups = []
-    
-    logger.info(f"Starting mass message with {'image' if photo else 'message'}")
 
     for group in filtered_groups:
         try:
-            logger.info(f"Sending to group/channel {group['title']} (ID: {group['id']})")
-
             if photo:
                 # Send photo with caption, stripping the command if present
                 formatted_caption = f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
@@ -1938,7 +1924,7 @@ def main():
         ))
 
         # Start the Bot
-        logger.info("Starting bot...")
+        logger.info("Starting bot...")  # This can be kept for clarity
         application.post_init = set_bot_commands
         
         # Start polling and set the bot ID after the bot is running
