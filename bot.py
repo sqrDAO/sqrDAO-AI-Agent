@@ -1484,50 +1484,36 @@ async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Add this handler to detect when bot is added to or removed from groups
 async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Track when bot is added to or removed from a group."""
+    """Track when bot is added to or removed from a group or channel, or when a group is migrated to a supergroup."""
     global GROUP_MEMBERS
     
     # Check for my_chat_member updates
-    if update.my_chat_member and update.my_chat_member.chat.type in ['group', 'supergroup']:
+    if update.my_chat_member and update.my_chat_member.chat.type in ['group', 'supergroup', 'channel']:
         chat = update.my_chat_member.chat
-        old_status = update.my_chat_member.old_chat_member.status if update.my_chat_member.old_chat_member else None
         new_status = update.my_chat_member.new_chat_member.status if update.my_chat_member.new_chat_member else None
         
-        logger.debug(f"Group status update: {chat.title} (ID: {chat.id}) - Old Status: {old_status}, New Status: {new_status}")
+        logger.debug(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
 
-        # Bot was added to a group
-        if new_status in ['member', 'administrator'] and old_status in [None, 'left', 'kicked']:
+        # Bot was added to a group or channel
+        if new_status in ['member', 'administrator']:
             if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
                 GROUP_MEMBERS.append({
                     'id': chat.id,
                     'title': chat.title,
-                    'type': chat.type,
+                    'type': chat.type,  # Ensure type is captured
                     'added_at': datetime.now().isoformat()
                 })
                 save_groups_to_knowledge()
-                logger.info(f"Added group: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
+                logger.info(f"Added group/channel: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
         
-        # Bot was removed from a group
-        elif new_status in ['left', 'kicked'] and old_status in ['member', 'administrator']:
+        # Bot was removed from a group or channel
+        elif new_status in ['left', 'kicked']:
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
             save_groups_to_knowledge()
-            logger.info(f"Removed group: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
-        
-        # Handle group migration to supergroup
-        elif (old_status == 'member' and new_status == 'supergroup') or (old_status == 'group' and new_status == 'supergroup'):
-            logger.info(f"Group {chat.title} (ID: {chat.id}) has migrated to a supergroup.")
-            logger.debug(f"Checking migration condition: Old Status: {old_status}, New Status: {new_status}")
-            for group in GROUP_MEMBERS:
-                if group['id'] == update.my_chat_member.chat.id:
-                    logger.debug(f"Updating group ID for migrated group: {group['title']} from {group['id']} to {chat.id}")
-                    group['id'] = chat.id  # Update to new supergroup ID
-                    group['type'] = 'supergroup'  # Update type to supergroup
-                    save_groups_to_knowledge()
-                    logger.info(f"Updated group ID for migrated group: {group['title']} to new ID: {chat.id}")
-                    break  # Exit the loop after updating the group ID
+            logger.info(f"Removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
     
     # Also check normal message updates from groups
-    elif update.message and update.message.chat.type in ['group', 'supergroup']:
+    elif update.message and update.message.chat.type in ['group', 'supergroup', 'channel']:
         chat = update.message.chat
         if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
             GROUP_MEMBERS.append({
@@ -1538,6 +1524,19 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
             })
             save_groups_to_knowledge()
             logger.info(f"Added group from message: {chat.title} (ID: {chat.id}) to GROUP_MEMBERS.")
+    
+    # Handle group migration to supergroup
+    elif update.my_chat_member and update.my_chat_member.chat.type == 'supergroup':
+        old_status = update.my_chat_member.old_chat_member.status if update.my_chat_member.old_chat_member else None
+        if old_status in ['member', 'administrator']:
+            logger.info(f"Group {chat.title} (ID: {chat.id}) has migrated to a supergroup.")
+            for group in GROUP_MEMBERS:
+                if group['id'] == update.my_chat_member.chat.id:
+                    group['id'] = chat.id  # Update to new supergroup ID
+                    group['type'] = 'supergroup'  # Update type to supergroup
+                    save_groups_to_knowledge()
+                    logger.info(f"Updated group ID for migrated group: {group['title']} to new ID: {chat.id}")
+                    break  # Exit the loop after updating the group ID
 
 # Replace the get_bot_groups function with this simpler version
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
@@ -1618,15 +1617,16 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Add this command to list all groups
 @is_member
 async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /list_groups command - List all tracked groups."""
+    """Handle /list_groups command - List all tracked groups and channels."""
+    logger.debug(f"Current GROUP_MEMBERS: {GROUP_MEMBERS}")  # Log current members
     if not GROUP_MEMBERS:
         await update.message.reply_text(
-            "📝 No groups found.",
+            "📝 No groups or channels found.",
             parse_mode=ParseMode.HTML
         )
         return
     
-    groups_text = "<b>Current Groups:</b>\n\n"
+    groups_text = "<b>Current Groups and Channels:</b>\n\n"
     for group in GROUP_MEMBERS:
         # Escape special characters in title
         title = group['title'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
@@ -1725,19 +1725,19 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get all regular users (excluding authorized members)
     valid_users = [user for user in MEMBERS if user.get('user_id')]
     
-    # Get all groups where the bot is a member
+    # Get all groups and channels where the bot is a member
     all_groups = await get_bot_groups(context)
     
     if not valid_users and not all_groups:
         await update.message.reply_text(
-            "❌ No valid users or groups found to send the message to.",
+            "❌ No valid users or groups/channels found to send the message to.",
             parse_mode=ParseMode.HTML
         )
         return
     
     # Send confirmation to the sender
     await update.message.reply_text(
-        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(all_groups)} groups...",
+        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(all_groups)} groups/channels...",
         parse_mode=ParseMode.HTML
     )
     
@@ -1753,7 +1753,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for group in all_groups:
         try:
-            logger.info(f"Sending to group {group['title']} (ID: {group['id']})")
+            logger.info(f"Sending to group/channel {group['title']} (ID: {group['id']})")
 
             if photo:
                 # Send photo with caption, stripping the command if present
@@ -1776,7 +1776,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             group_failure_count += 1
             failed_groups.append(f"{group['title']} ({group['type']})")
-            logger.error(f"Failed to send to group {group['title']} (ID: {group['id']}): {str(e)}")
+            logger.error(f"Failed to send to group/channel {group['title']} (ID: {group['id']}): {str(e)}")
     
     # Send summary to the sender
     summary = f"✅ {'Image' if photo else 'Message'} delivery complete!\n\n"
@@ -1791,7 +1791,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary += f"• Successfully sent: {user_success_count}\n"
     summary += f"• Failed to send: {user_failure_count}\n"
     
-    summary += f"\n\n📊 Group Statistics:\n"
+    summary += f"\n\n📊 Group/Channel Statistics:\n"
     summary += f"• Successfully sent: {group_success_count}\n"
     summary += f"• Failed to send: {group_failure_count}\n"
     
