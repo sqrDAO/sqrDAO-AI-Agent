@@ -1693,21 +1693,37 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mass_message command - Send a message to all regular users and groups."""
-    # Get the message text by removing the command
-    message = update.message.text.replace('/mass_message', '').strip()
+    """Handle /mass_message command - Send a message with optional image to all users and groups."""
+    # Check if there's an image attached
+    photo = None
+    caption = None
     
-    if not message:
+    if update.message.photo:
+        # Get the largest photo size
+        photo = update.message.photo[-1].file_id
+        caption = update.message.caption if update.message.caption else ""
+    elif update.message.text:
+        # Get the message text by removing the command
+        message = update.message.text.replace('/mass_message', '').strip()
+        
+        if not message:
+            await update.message.reply_text(
+                "❌ Please provide a message or image to send.\n"
+                "Usage:\n"
+                "• Text only: /mass_message [message]\n"
+                "• Image: Send an image with optional caption and add /mass_message in the caption",
+                parse_mode=ParseMode.HTML
+            )
+            return
+    else:
         await update.message.reply_text(
-            "❌ Please provide a message to send.\n"
-            "Usage: /mass_message [message]\n"
-            "Example: /mass_message Testing",
+            "❌ Please provide either a text message or an image.",
             parse_mode=ParseMode.HTML
         )
         return
     
     # Get all regular users (excluding authorized members)
-    valid_users = [user for user in MEMBERS if user.get('user_id')]  # Only regular members
+    valid_users = [user for user in MEMBERS if user.get('user_id')]
     
     # Get all groups where the bot is a member
     all_groups = await get_bot_groups(context)
@@ -1721,7 +1737,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Send confirmation to the sender
     await update.message.reply_text(
-        f"📤 Starting to send message to {len(valid_users)} users and {len(all_groups)} groups...",
+        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(all_groups)} groups...",
         parse_mode=ParseMode.HTML
     )
     
@@ -1733,30 +1749,41 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     failed_users = []
     failed_groups = []
     
-    logger.debug(f"Starting mass message with message: {message}")
+    logger.debug(f"Starting mass message with {'image' if photo else 'message'}")
 
     for group in all_groups:
         try:
-            logger.info(f"Sending message to group {group['title']} (ID: {group['id']})")
+            logger.info(f"Sending to group {group['title']} (ID: {group['id']})")
 
-            await context.bot.send_message(
-                chat_id=group['id'],
-                text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
-                parse_mode=ParseMode.HTML
-            )
+            if photo:
+                # Send photo with caption, stripping the command if present
+                formatted_caption = f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
+                await context.bot.send_photo(
+                    chat_id=group['id'],
+                    photo=photo,
+                    caption=formatted_caption,
+                    parse_mode=ParseMode.HTML if formatted_caption else None
+                )
+            else:
+                # Send text message without the command
+                await context.bot.send_message(
+                    chat_id=group['id'],
+                    text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
+                    parse_mode=ParseMode.HTML
+                )
             group_success_count += 1
             
         except Exception as e:
             group_failure_count += 1
             failed_groups.append(f"{group['title']} ({group['type']})")
-            logger.error(f"Failed to send message to group {group['title']} (ID: {group['id']}): {str(e)}")
+            logger.error(f"Failed to send to group {group['title']} (ID: {group['id']}): {str(e)}")
     
     # Send summary to the sender
-    summary = f"✅ Message delivery complete!\n\n"
+    summary = f"✅ {'Image' if photo else 'Message'} delivery complete!\n\n"
     
     if failed_users:
         summary += f"❌ Failed to send to users:\n"
-        summary += "\n".join(f"• {user}" for user in failed_users[:5])  # Show first 5 failed users
+        summary += "\n".join(f"• {user}" for user in failed_users[:5])
         if len(failed_users) > 5:
             summary += f"\n... and {len(failed_users) - 5} more users"
     
@@ -1852,6 +1879,10 @@ def main():
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_group_status))
         application.add_handler(ChatMemberHandler(handle_group_status))
+        # Add handler for photos with mass_message command in caption
+        application.add_handler(MessageHandler(
+            filters.PHOTO & filters.CaptionRegex(r'^/mass_message'), mass_message
+        ))
 
         # Start the Bot
         logger.info("Starting bot...")

@@ -88,7 +88,6 @@ The `/mass_message` command has been updated to:
 - Provide detailed delivery statistics
 - Show failed message attempts
 - Include proper error handling and logging
-- Provide detailed delivery statistics
 
 ## Setup
 
