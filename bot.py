@@ -171,10 +171,30 @@ def load_groups_from_knowledge():
 def save_groups_to_knowledge():
     """Save groups to the knowledge base."""
     try:
+        logger.info("Saving groups to knowledge base...")  # Log when saving starts
         # Save groups
         db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
+        logger.info(f"Successfully saved groups to knowledge base: {db.get_knowledge('bot_groups')}")  # Log success
     except Exception as e:
         logger.error(f"Error saving groups to knowledge base: {str(e)}")
+
+def delete_groups_from_knowledge():
+    """Delete all groups from the knowledge base and save the current GROUP_MEMBERS list."""
+    try:
+        logger.info("Deleting all groups from knowledge base...")
+        # First, delete all existing bot_groups entries
+        db.cursor.execute('''
+            DELETE FROM knowledge_base
+            WHERE topic = 'bot_groups'
+        ''')
+        db.conn.commit()
+        logger.info("Successfully cleared old group entries from knowledge base.")
+        
+        # Now save the current GROUP_MEMBERS list (which already has the group removed)
+        db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
+        logger.info(f"Successfully saved updated groups to knowledge base: {GROUP_MEMBERS}")
+    except Exception as e:
+        logger.error(f"Error updating groups in knowledge base: {str(e)}")
 
 class Database:
     def __init__(self):
@@ -1618,7 +1638,7 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @is_member
 async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /list_groups command - List all tracked groups and channels."""
-    logger.debug(f"Current GROUP_MEMBERS: {GROUP_MEMBERS}")  # Log current members
+    logger.info(f"Current GROUP_MEMBERS: {db.get_knowledge('bot_groups')}")  # Log current members from knowledge base
     if not GROUP_MEMBERS:
         await update.message.reply_text(
             "📝 No groups or channels found.",
@@ -1652,6 +1672,8 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @is_member
 async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /remove_group command - Remove a group ID."""
+    global GROUP_MEMBERS  # Declare GROUP_MEMBERS as global
+
     if not context.args:
         await update.message.reply_text(
             "<b>❌ Please provide a group ID to remove.</b>\n"
@@ -1665,13 +1687,16 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         group_id = int(context.args[0])
         
-        # Find and remove the group
-        group = next((g for g in GROUP_MEMBERS if g['id'] == group_id), None)
-        if group:
-            GROUP_MEMBERS.remove(group)
-            save_groups_to_knowledge()
+        # Remove all groups with the specified ID
+        initial_count = len(GROUP_MEMBERS)
+        GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != group_id]
+        removed_count = initial_count - len(GROUP_MEMBERS)
+
+        if removed_count > 0:
+            # Update the knowledge base with the new GROUP_MEMBERS list
+            delete_groups_from_knowledge()
             await update.message.reply_text(
-                f"<b>✅ Successfully removed group:</b> {group['title']} ({group_id})",
+                f"<b>✅ Successfully removed {removed_count} group(s) with ID:</b> {group_id}",
                 parse_mode=ParseMode.HTML
             )
         else:
@@ -1697,27 +1722,42 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if there's an image attached
     photo = None
     caption = None
+    grouptype = None
     
+    # Check if there are enough arguments
+    if len(context.args) < 1:  # At least a message and a grouptype
+        await update.message.reply_text(
+            "❌ Please provide a message and an optional grouptype.\n"
+            "Usage:\n"
+            "• /mass_message [message] | [grouptype]\n"
+            "• Example: /mass_message Hello everyone | sqrdao\n"
+            "If grouptype is 'sqrdao', the message will only be sent to groups/channels with 'sqrdao' in their title.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Check if the separator is present in the arguments
+    if "|" in context.args:
+        # Split the arguments into message parts and grouptype
+        separator_index = context.args.index("|")
+        message_parts = context.args[:separator_index]  # All arguments before the separator
+        grouptype = context.args[separator_index + 1].strip().lower() if separator_index + 1 < len(context.args) else None
+        
+        # Join the message parts into a single string
+        message = " ".join(message_parts).strip()
+    else:
+        message = " ".join(context.args)  # If no separator, treat all as message
+
+    logger.info(f"Message to send: '{message}'")
+    logger.info(f"Grouptype specified: '{grouptype}'")
+
     if update.message.photo:
         # Get the largest photo size
         photo = update.message.photo[-1].file_id
         caption = update.message.caption if update.message.caption else ""
-    elif update.message.text:
-        # Get the message text by removing the command
-        message = update.message.text.replace('/mass_message', '').strip()
-        
-        if not message:
-            await update.message.reply_text(
-                "❌ Please provide a message or image to send.\n"
-                "Usage:\n"
-                "• Text only: /mass_message [message]\n"
-                "• Image: Send an image with optional caption and add /mass_message in the caption",
-                parse_mode=ParseMode.HTML
-            )
-            return
-    else:
+    elif not message:
         await update.message.reply_text(
-            "❌ Please provide either a text message or an image.",
+            "❌ Please provide a message or image to send.",
             parse_mode=ParseMode.HTML
         )
         return
@@ -1727,8 +1767,17 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Get all groups and channels where the bot is a member
     all_groups = await get_bot_groups(context)
-    
-    if not valid_users and not all_groups:
+    logger.info(f"All groups: {all_groups}")
+
+    # Filter groups based on grouptype if specified
+    if grouptype == "sqrdao":
+        filtered_groups = [g for g in all_groups if "sqrdao" in g['title'].lower()]
+        logger.info(f"Filtered groups (sqrdao): {filtered_groups}")
+    else:
+        filtered_groups = all_groups
+        logger.info("No filtering applied, sending to all groups.")
+
+    if not valid_users and not filtered_groups:
         await update.message.reply_text(
             "❌ No valid users or groups/channels found to send the message to.",
             parse_mode=ParseMode.HTML
@@ -1736,8 +1785,9 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Send confirmation to the sender
+    group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else ""
     await update.message.reply_text(
-        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(all_groups)} groups/channels...",
+        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
         parse_mode=ParseMode.HTML
     )
     
@@ -1749,9 +1799,9 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     failed_users = []
     failed_groups = []
     
-    logger.debug(f"Starting mass message with {'image' if photo else 'message'}")
+    logger.info(f"Starting mass message with {'image' if photo else 'message'}")
 
-    for group in all_groups:
+    for group in filtered_groups:
         try:
             logger.info(f"Sending to group/channel {group['title']} (ID: {group['id']})")
 
@@ -1780,6 +1830,9 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Send summary to the sender
     summary = f"✅ {'Image' if photo else 'Message'} delivery complete!\n\n"
+    
+    if grouptype == "sqrdao":
+        summary += "📝 Message was sent to sqrDAO groups only\n\n"
     
     if failed_users:
         summary += f"❌ Failed to send to users:\n"
