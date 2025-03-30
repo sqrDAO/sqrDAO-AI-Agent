@@ -957,16 +957,16 @@ async def get_sqr_info_command(update: Update, context: ContextTypes.DEFAULT_TYP
             
             # Format the message
             message = (
-                "🪙 *SQR Token Information*\n\n"
+                "🪙 <b>SQR Token Information</b>\n\n"
                 f"💰 Price: ${price_usd}\n"
                 f"📈 24h Change: {price_change_24h}%\n"
                 f"📊 24h Volume: {volume_24h}\n"
                 f"💎 Market Cap: {market_cap}\n\n"
                 "Data provided by GeckoTerminal\n\n"
-                "Buy SQR on Jupiter: https://jup.ag/swap/SOL-SQR"
+                "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n"
             )
             
-            await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(message, parse_mode=ParseMode.HTML)
         else:
             await update.message.reply_text("❌ Sorry, I couldn't fetch SQR token information at the moment. Please try again later.")
             
