@@ -29,6 +29,7 @@ import base58
 from solders.keypair import Keypair
 from telegram.ext import ChatMemberHandler
 from solders.signature import Signature
+import asyncio
 
 # SNS resolution function
 async def resolve_sns_domain(domain: str) -> str:
@@ -127,14 +128,11 @@ def load_members_from_knowledge():
 def save_members_to_knowledge():
     """Save regular members to the knowledge base."""
     try:
-        logger.info("Saving members to knowledge base...")  # Log when saving starts
-        
         # Create a dictionary to filter out duplicates by user_id
         unique_members = {member['user_id']: member for member in MEMBERS}.values()
         
         # Save unique members
         db.store_knowledge("members", json.dumps(list(unique_members)))
-        logger.info("Successfully saved members to knowledge base.")  # Log success
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
@@ -177,14 +175,11 @@ def save_groups_to_knowledge():
     global GROUP_MEMBERS
     """Save groups to the knowledge base."""
     try:
-        logger.info("Saving groups to knowledge base...")  # Log when saving starts
-        
         # Create a dictionary to filter out duplicates by ID
         unique_groups = {group['id']: group for group in GROUP_MEMBERS}.values()
         
         # Save unique groups
         db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
-        logger.info(f"Successfully saved groups to knowledge base.")  # Log success
     except Exception as e:
         logger.error(f"Error saving groups to knowledge base: {str(e)}")
 
@@ -192,14 +187,12 @@ def delete_groups_from_knowledge():
     global GROUP_MEMBERS
     """Delete all groups from the knowledge base and save the current GROUP_MEMBERS list."""
     try:
-        logger.info("Deleting all groups from knowledge base...")
         # First, delete all existing bot_groups entries
         db.cursor.execute('''
             DELETE FROM knowledge_base
             WHERE topic = 'bot_groups'
         ''')
         db.conn.commit()
-        logger.info("Successfully cleared old group entries from knowledge base.")
         
         # Now save the current GROUP_MEMBERS list (which already has the group removed)
         # Create a dictionary to filter out duplicates by ID
@@ -207,7 +200,6 @@ def delete_groups_from_knowledge():
         
         # Save unique groups
         db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
-        logger.info(f"Successfully saved updated groups to knowledge base: {list(unique_groups)}")
     except Exception as e:
         logger.error(f"Error updating groups in knowledge base: {str(e)}")
 
@@ -506,7 +498,6 @@ try:
     
     # Test the model with a simple prompt
     test_response = model.generate_content("Hello")
-    logger.info("Successfully tested model with 'Hello' prompt")
     logger.debug(f"Test response: {test_response.text if hasattr(test_response, 'text') else 'No text attribute'}")
     
 except Exception as e:
@@ -682,6 +673,330 @@ def process_message_with_context(message, context):
         logger.error(f"Error generating response: {str(e)}")
         return "I encountered an error while processing your message. Please try again."
 
+async def check_transaction_status(signature: str, command_start_time: datetime, space_url: str = None) -> Tuple[bool, str, Optional[str]]:
+    """Check if a Solana transaction was successful, completed within the deadline, and has correct amount.
+    
+    Args:
+        signature (str): The transaction signature to check
+        command_start_time (datetime): When the command was initiated
+        space_url (str): The Twitter Space URL to summarize
+        
+    Returns:
+        Tuple[bool, str, Optional[str]]: (True if all checks pass, error message if any check fails, job_id if space download was initiated)
+    """
+    try:
+        # Validate signature format
+        if not signature or len(signature) < 32:
+            logger.warning("Invalid signature format: too short or empty")
+            return False, "❌ Invalid transaction signature format", None
+            
+        # Convert signature string to Signature object
+        try:
+            signature_obj = Signature.from_string(signature)
+        except Exception as e:
+            logger.error(f"Error converting signature format: {str(e)}")
+            return False, f"❌ Error converting signature format: {str(e)}", None
+            
+        # Get transaction details according to Solana RPC spec
+        response = solana_client.get_transaction(
+            signature_obj,
+            encoding="jsonParsed",  # Use jsonParsed for better token balance parsing
+        )
+        
+        if not response or not response.value:
+            logger.error("No transaction data found in response")
+            return False, "❌ No transaction data found in response", None
+            
+        # Access the transaction data structure correctly
+        transaction_data = response.value.transaction
+        meta = transaction_data.meta
+        
+        # Check if transaction was successful
+        if not meta:
+            logger.error("No meta data found in transaction")
+            return False, "❌ No meta data found in transaction", None
+            
+        if meta.err:
+            logger.error(f"Transaction failed with error: {meta.err}")
+            return False, f"❌ Transaction failed: {meta.err}", None
+            
+        # Get block time from transaction
+        if not response.value.block_time:
+            logger.error("No block time found in transaction")
+            return False, "❌ No block time found in transaction", None
+            
+        # Convert block time to datetime
+        transaction_time = datetime.fromtimestamp(response.value.block_time)
+        
+        # Check if transaction was completed within the 30-minute window
+        time_diff = transaction_time - command_start_time
+        
+        if time_diff < timedelta(0):
+            logger.warning("Transaction was completed before command was issued")
+            return False, "❌ Transaction was completed before the command was issued", None
+        elif time_diff > timedelta(minutes=30):
+            minutes_late = int((time_diff - timedelta(minutes=30)).total_seconds() / 60)
+            logger.warning(f"Transaction was completed {minutes_late} minutes after deadline")
+            return False, f"❌ Transaction was completed {minutes_late} minutes after the 30-minute window expired", None
+            
+        # Check token amount using pre and post token balances
+        try:
+            # Get pre and post token balances
+            pre_balances = meta.pre_token_balances
+            post_balances = meta.post_token_balances
+            
+            if not pre_balances or not post_balances:
+                logger.error("No token balance information found in transaction")
+                return False, "❌ No token balance information found in transaction", None
+            
+            # Find the token transfer amount by comparing pre and post balances
+            transfer_amount = 0
+            target_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"
+            
+            # First find the token account that received the tokens
+            for post_balance in post_balances:
+                if str(post_balance.mint) == target_mint:
+                    # Find the corresponding pre-balance for this account
+                    pre_balance = next(
+                        (pre for pre in pre_balances 
+                         if str(pre.mint) == target_mint and pre.account_index == post_balance.account_index),
+                        None
+                    )
+                    
+                    if pre_balance:
+                        # Calculate the actual transfer amount (post - pre)
+                        pre_amount = float(pre_balance.ui_token_amount.ui_amount_string)
+                        post_amount = float(post_balance.ui_token_amount.ui_amount_string)
+                        transfer_amount = post_amount - pre_amount
+                        break
+            
+            if transfer_amount <= 0:
+                logger.warning(f"Invalid transfer amount: {transfer_amount}")
+                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: 1000)", None
+                
+            if transfer_amount < 1000:
+                logger.warning(f"Insufficient transfer amount: {transfer_amount}")
+                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: 1000)", None
+                
+        except Exception as e:
+            logger.error(f"Error checking token amount: {str(e)}")
+            logger.error(f"Full error traceback: {traceback.format_exc()}")
+            return False, "❌ Error verifying token amount in transaction", None
+            
+        # If we have a space URL and all checks passed, process the space summarization
+        if space_url:
+            try:
+                # Get API key from environment variables
+                api_key = os.getenv('SQR_FUND_API_KEY')
+                if not api_key:
+                    logger.error("SQR_FUND_API_KEY not found in environment variables")
+                    return False, "❌ API key not configured", None
+
+                # First, download the space
+                download_response = requests.post(
+                    "https://spaces.sqrfund.ai/api/async/download-spaces",
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-API-Key": api_key
+                    },
+                    json={
+                        "spacesUrl": space_url
+                    }
+                )
+
+                if download_response.status_code != 202:
+                    logger.error(f"Failed to initiate space download: {download_response.text}")
+                    return False, f"❌ Failed to initiate space download: {download_response.text}", None
+
+                # Get the job ID from the response
+                try:
+                    job_data = download_response.json()
+                    job_id = job_data.get('jobId')
+                    if not job_id:
+                        logger.error("No job ID received from download request")
+                        return False, "❌ No job ID received from download request", None
+                except Exception as e:
+                    logger.error(f"Error parsing download response: {str(e)}")
+                    return False, f"❌ Error parsing download response: {str(e)}", None
+
+                # Return message about download in progress
+                return True, (
+                    "✅ Transaction verified successfully!\n\n"
+                    "🔄 Space download initiated. This may take a few minutes.\n"
+                    "Please wait while we process your request..."
+                ), job_id
+                    
+            except Exception as e:
+                logger.error(f"Error processing space: {str(e)}")
+                logger.error(f"Full error traceback: {traceback.format_exc()}")
+                return False, f"❌ Error processing space: {str(e)}", None
+            
+        return True, "✅ Transaction verified successfully!", None
+        
+    except Exception as e:
+        logger.error(f"Error checking transaction status: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+        return False, f"❌ Error checking transaction status: {str(e)}", None
+
+async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
+    """Check the status of a space download job and proceed with summarization if complete.
+    
+    Args:
+        job_id (str): The ID of the download job to check
+        space_url (str): The Twitter Space URL to summarize
+        
+    Returns:
+        Tuple[bool, str]: (True if job is complete and summary is ready, error message if any step fails)
+    """
+    try:
+        api_key = os.getenv('SQR_FUND_API_KEY')
+        if not api_key:
+            logger.error("SQR_FUND_API_KEY not found in environment variables")
+            return False, "❌ API key not configured"
+
+        # Check job status
+        status_url = f"https://spaces.sqrfund.ai/api/jobs/{job_id}"
+        
+        status_response = requests.get(
+            status_url,
+            headers={
+                "X-API-Key": api_key
+            }
+        )
+
+        if status_response.status_code != 200:
+            logger.error(f"Failed to check job status. Status code: {status_response.status_code}, Response: {status_response.text}")
+            return False, f"❌ Failed to check job status: {status_response.text}"
+
+        job_status = status_response.json()
+        # Access the nested status field from the job object
+        status = job_status.get('job', {}).get('status')
+
+        if status == 'completed':
+            # Proceed with summarization
+            summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
+            
+            summary_response = requests.post(
+                summary_url,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": api_key
+                },
+                json={
+                    "spacesUrl": space_url,
+                    "promptType": "formatted"
+                }
+            )
+
+            if summary_response.status_code == 200:
+                summary_data = summary_response.json()
+                return True, summary_data.get('summary', '✅ Space summarized successfully!')
+            else:
+                logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
+                return False, f"❌ Failed to summarize space: {summary_response.text}"
+        elif status == 'failed':
+            error_msg = job_status.get('job', {}).get('error', 'Unknown error')
+            logger.error(f"Space download failed with error: {error_msg}")
+            
+            # Provide more user-friendly error messages for common issues
+            if "yt-dlp process exited with code 1" in error_msg:
+                return False, (
+                    "❌ Failed to download the Space. This could be due to:\n"
+                    "• The Space URL is invalid or no longer available\n"
+                    "• The Space is private or restricted\n"
+                    "• The Space has been deleted\n"
+                    "• Technical issues with the Space download\n\n"
+                    "Please verify the Space URL and try again."
+                )
+            else:
+                return False, f"❌ Space download failed: {error_msg}"
+        elif status == 'processing':
+            await asyncio.sleep(60)  # Wait for 60 seconds
+            return await check_job_status(job_id, space_url)  # Recursive call to check again
+        else:
+            return False, "🔄 Space download is still in progress. Please wait..."
+
+    except Exception as e:
+        logger.error(f"Error checking job status: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+        return False, f"❌ Error checking job status: {str(e)}"
+
+async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, space_url: str, chat_id: int, message_id: int, max_attempts: int = 30):
+    """Periodically check job status and update the user.
+    
+    Args:
+        context: The context object from the application
+        job_id: The ID of the download job to check
+        space_url: The Twitter Space URL to summarize
+        chat_id: The chat ID to send updates to
+        message_id: The message ID to update
+        max_attempts: Maximum number of attempts (default 30 = 5 minutes)
+    """
+    attempt = 0
+    while attempt < max_attempts:
+        is_complete, message = await check_job_status(job_id, space_url)
+        
+        if is_complete:
+            try:
+                # Split long messages into chunks of 4000 characters (Telegram's limit is 4096)
+                message_chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
+                
+                # Send each chunk
+                for i, chunk in enumerate(message_chunks):
+                    if i == 0:
+                        # First chunk updates the original message
+                        await context.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            text=chunk,
+                            parse_mode=ParseMode.HTML
+                        )
+                    else:
+                        # Additional chunks as new messages
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=chunk,
+                            parse_mode=ParseMode.HTML
+                        )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to send summary message: {str(e)}")
+                logger.error(f"Full error traceback: {traceback.format_exc()}")
+                return False
+        
+        # Update the status message
+        try:
+            # Split long messages into chunks
+            status_message = f"{message}\n\n⏳ Checking again in 60 seconds..."
+            if len(status_message) > 4000:
+                status_message = status_message[:3997] + "..."
+            
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=status_message,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            logger.error(f"Error updating status message: {str(e)}")
+            logger.error(f"Full error traceback: {traceback.format_exc()}")
+        
+        # Wait for 60 seconds before next check
+        await asyncio.sleep(60)
+        attempt += 1
+    
+    # If we've reached max attempts, send a timeout message
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ Timeout: Space processing took too long. Please try again later.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        logger.error(f"Failed to send timeout message: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+    return False
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming messages."""
     try:
@@ -692,6 +1007,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # First check if we're awaiting a signature for space summarization
         if context.user_data.get('awaiting_signature'):
             command_start_time = context.user_data.get('command_start_time')
+            space_url = context.user_data.get('space_url')
             
             if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
                 await message.reply_text(
@@ -702,22 +1018,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 context.user_data['awaiting_signature'] = False
                 context.user_data['command_start_time'] = None
+                context.user_data['space_url'] = None
+                context.user_data['job_id'] = None
                 context.user_data['failed_attempts'] = 0
                 return
 
             signature = message.text.strip()
-            is_successful, message_text = await check_transaction_status(signature, command_start_time)
+            
+            is_successful, message_text, job_id = await check_transaction_status(signature, command_start_time, space_url)
             
             if is_successful:
-                await message.reply_text(
+                # Send initial status message
+                status_message = await message.reply_text(
                     "✅ Transaction verified successfully!\n"
                     "Processing your request...",
                     parse_mode=ParseMode.HTML
                 )
-                await message.reply_text("Success", parse_mode=ParseMode.HTML)
-                context.user_data['awaiting_signature'] = False
-                context.user_data['command_start_time'] = None
-                context.user_data['failed_attempts'] = 0
+                
+                # If we have a job ID, start periodic checking
+                if job_id:
+                    # Store the job_id in user_data
+                    context.user_data['job_id'] = job_id
+                    # Start the periodic check in the background
+                    asyncio.create_task(periodic_job_check(
+                        context=context,
+                        job_id=job_id,
+                        space_url=space_url,
+                        chat_id=message.chat_id,
+                        message_id=status_message.message_id
+                    ))
+                else:
+                    await message.reply_text(message_text, parse_mode=ParseMode.HTML)
             else:
                 # Increment failed attempts counter
                 failed_attempts = context.user_data.get('failed_attempts', 0) + 1
@@ -731,6 +1062,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     context.user_data['awaiting_signature'] = False
                     context.user_data['command_start_time'] = None
+                    context.user_data['space_url'] = None
+                    context.user_data['job_id'] = None
                     context.user_data['failed_attempts'] = 0
                 else:
                     remaining_attempts = 3 - failed_attempts
@@ -967,15 +1300,16 @@ async def get_sqr_info_command(update: Update, context: ContextTypes.DEFAULT_TYP
             
             # Format the message
             message = (
-                "🪙 *SQR Token Information*\n\n"
+                "🪙 <b>SQR Token Information</b>\n\n"
                 f"💰 Price: ${price_usd}\n"
                 f"📈 24h Change: {price_change_24h}%\n"
                 f"📊 24h Volume: {volume_24h}\n"
                 f"💎 Market Cap: {market_cap}\n\n"
-                "Data provided by GeckoTerminal"
+                "Data provided by GeckoTerminal\n\n"
+                "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n"
             )
             
-            await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(message, parse_mode=ParseMode.HTML)
         else:
             await update.message.reply_text("❌ Sorry, I couldn't fetch SQR token information at the moment. Please try again later.")
             
@@ -1397,110 +1731,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
-async def check_transaction_status(signature: str, command_start_time: datetime) -> Tuple[bool, str]:
-    """Check if a Solana transaction was successful, completed within the deadline, and has correct amount.
-    
-    Args:
-        signature (str): The transaction signature to check
-        command_start_time (datetime): When the command was initiated
-        
-    Returns:
-        Tuple[bool, str]: (True if all checks pass, error message if any check fails)
-    """
-    try:
-        # Validate signature format
-        if not signature or len(signature) < 32:
-            return False, "❌ Invalid transaction signature format"
-            
-        # Convert signature string to Signature object
-        try:
-            signature_obj = Signature.from_string(signature)
-            logger.info(f"Successfully converted signature string to Signature object: {signature_obj}")
-        except Exception as e:
-            return False, f"❌ Error converting signature format: {str(e)}"
-            
-        # Get transaction details according to Solana RPC spec
-        response = solana_client.get_transaction(
-            signature_obj,
-            encoding="jsonParsed",  # Use jsonParsed for better token balance parsing
-        )
-        
-        if not response or not response.value:
-            return False, "❌ No transaction data found in response"
-            
-        # Access the transaction data structure correctly
-        transaction_data = response.value.transaction
-        meta = transaction_data.meta
-        
-        # Check if transaction was successful
-        if not meta:
-            return False, "❌ No meta data found in transaction"
-            
-        if meta.err:
-            return False, f"❌ Transaction failed: {meta.err}"
-            
-        # Get block time from transaction
-        if not response.value.block_time:
-            return False, "❌ No block time found in transaction"
-            
-        # Convert block time to datetime
-        transaction_time = datetime.fromtimestamp(response.value.block_time)
-        
-        # Check if transaction was completed within the 30-minute window
-        time_diff = transaction_time - command_start_time
-        if time_diff < timedelta(0):
-            return False, "❌ Transaction was completed before the command was issued"
-        elif time_diff > timedelta(minutes=30):
-            minutes_late = int((time_diff - timedelta(minutes=30)).total_seconds() / 60)
-            return False, f"❌ Transaction was completed {minutes_late} minutes after the 30-minute window expired"
-            
-        # Check token amount using pre and post token balances
-        try:
-            # Get pre and post token balances
-            pre_balances = meta.pre_token_balances
-            post_balances = meta.post_token_balances
-            
-            if not pre_balances or not post_balances:
-                return False, "❌ No token balance information found in transaction"
-            
-            # Find the token transfer amount by comparing pre and post balances
-            transfer_amount = 0
-            target_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"
-            
-            # First find the token account that received the tokens
-            for post_balance in post_balances:
-                if str(post_balance.mint) == target_mint:
-                    # Find the corresponding pre-balance for this account
-                    pre_balance = next(
-                        (pre for pre in pre_balances 
-                         if str(pre.mint) == target_mint and pre.account_index == post_balance.account_index),
-                        None
-                    )
-                    
-                    if pre_balance:
-                        # Calculate the actual transfer amount (post - pre)
-                        pre_amount = float(pre_balance.ui_token_amount.ui_amount_string)
-                        post_amount = float(post_balance.ui_token_amount.ui_amount_string)
-                        transfer_amount = post_amount - pre_amount
-                        break
-            
-            if transfer_amount <= 0:
-                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: 1000)"
-                
-            if transfer_amount < 1000:
-                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: 1000)"
-                
-        except Exception as e:
-            logger.error(f"Error checking token amount: {str(e)}")
-            return False, "❌ Error verifying token amount in transaction"
-            
-        return True, "✅ Transaction verified successfully!"
-        
-    except Exception as e:
-        logger.error(f"Error checking transaction status: {str(e)}")
-        logger.error(f"Full error traceback: {traceback.format_exc()}")
-        return False, f"❌ Error checking transaction status: {str(e)}"
-
 @is_member
 async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /list_members command - List all members."""
@@ -1527,7 +1757,7 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         chat = update.my_chat_member.chat
         new_status = update.my_chat_member.new_chat_member.status if update.my_chat_member.new_chat_member else None
         
-        logger.info(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
+        logger.debug(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
 
         # Bot was added to a group or channel
         if new_status in ['member', 'administrator']:
@@ -1544,7 +1774,7 @@ async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif new_status in ['left', 'kicked']:
             # Remove the group from GROUP_MEMBERS
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
-            logger.info(f"Successfully removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
+            logger.debug(f"Successfully removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
             
             # Delete all groups from knowledge base and save the updated GROUP_MEMBERS
             delete_groups_from_knowledge()
@@ -1640,8 +1870,6 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
         return
-    
-    logger.info(f"Successfully saved updated groups to knowledge base: {GROUP_MEMBERS}")
 
     groups_text = "<b>Current Groups and Channels:</b>\n\n"
     for group in GROUP_MEMBERS:
@@ -1765,6 +1993,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Filter groups based on grouptype if specified
     if grouptype == "sqrdao":
         filtered_groups = [g for g in all_groups if "sqrdao" in g['title'].lower()]
+    elif grouptype == "summit":
+        filtered_groups = [g for g in all_groups if "summit" in g['title'].lower()]
     else:
         filtered_groups = all_groups
 
@@ -1776,7 +2006,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Send confirmation to the sender
-    group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else ""
+    group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else " (Summit groups only)" if grouptype == "summit" else ""
     await update.message.reply_text(
         f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
         parse_mode=ParseMode.HTML
@@ -1793,8 +2023,14 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for group in filtered_groups:
         try:
             if photo:
+                # Determine announcement format based on grouptype
+                if grouptype in ["sqrdao", "summit"]:
+                    announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
+                else:
+                    announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
+                
                 # Send photo with caption, stripping the command if present
-                formatted_caption = f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
+                formatted_caption = f"{announcement_prefix}\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
                 await context.bot.send_photo(
                     chat_id=group['id'],
                     photo=photo,
@@ -1802,10 +2038,16 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.HTML if formatted_caption else None
                 )
             else:
+                # Determine announcement format based on grouptype
+                if grouptype in ["sqrdao", "summit"]:
+                    announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
+                else:
+                    announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
+                
                 # Send text message without the command
                 await context.bot.send_message(
                     chat_id=group['id'],
-                    text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
+                    text=f"{announcement_prefix}\n\n{message}",
                     parse_mode=ParseMode.HTML
                 )
             group_success_count += 1
@@ -1820,6 +2062,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if grouptype == "sqrdao":
         summary += "📝 Message was sent to sqrDAO groups only\n\n"
+    elif grouptype == "summit":
+        summary += "📝 Message was sent to Summit groups only\n\n"
     
     if failed_users:
         summary += f"❌ Failed to send to users:\n"
@@ -1856,10 +2100,31 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML
             )
             return
-    
-    # Store the user's state in context with timestamp
+
+    # Check if a space URL was provided
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide a X Space URL.\n"
+            "Usage: /summarize_space [space_url]\n"
+            "Example: /summarize_space https://x.com/i/spaces/1234567890",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Validate the space URL
+    space_url = context.args[0]
+    if not space_url.startswith("https://x.com/i/spaces/"):
+        await update.message.reply_text(
+            "❌ Invalid X Space URL format.\n"
+            "Please provide a valid URL starting with 'https://x.com/i/spaces/'",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Store the user's state in context with timestamp and space URL
     context.user_data['awaiting_signature'] = True
     context.user_data['command_start_time'] = datetime.now()
+    context.user_data['space_url'] = space_url
     
     # Send instructions to the user
     instructions = (
@@ -1925,7 +2190,7 @@ def main():
         ))
 
         # Start the Bot
-        logger.info("Starting bot...")  # This can be kept for clarity
+        logger.debug("Starting bot...")  # This can be kept for clarity
         application.post_init = set_bot_commands
         
         # Start polling and set the bot ID after the bot is running
