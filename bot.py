@@ -22,11 +22,14 @@ from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Dict
 from solders.pubkey import Pubkey
 from solana.rpc.api import Client
+from solders.rpc.responses import GetTransactionResp
+from solana.rpc.commitment import Commitment
 from spl.token.client import Token
 import base58
 from solders.keypair import Keypair
 from telegram.ext import ChatMemberHandler
 from solders.signature import Signature
+import asyncio
 
 # SNS resolution function
 async def resolve_sns_domain(domain: str) -> str:
@@ -58,9 +61,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize empty members lists
+# Initialize empty lists
 AUTHORIZED_MEMBERS = []
 MEMBERS = []
+GROUP_MEMBERS = []  # Store groups where the bot is a member
 
 # Global variable to store the bot's ID
 bot_id = None
@@ -69,8 +73,6 @@ bot_id = None
 SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
 solana_client = Client(SOLANA_RPC_URL)
 
-# Add this to the global variables section, after MEMBERS declaration
-GROUP_MEMBERS = []  # Store groups where the bot is a member
 
 def load_members_from_knowledge():
     """Load regular members from the knowledge base and authorized members from config.json."""
@@ -80,14 +82,12 @@ def load_members_from_knowledge():
         authorized_members_knowledge = db.get_knowledge("authorized_members")
         if authorized_members_knowledge:
             AUTHORIZED_MEMBERS = json.loads(authorized_members_knowledge[0][0])
-            logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members from knowledge base")
         else:
             # Load authorized members from config.json if not found in knowledge base
             try:
                 with open('config.json', 'r') as f:
                     config = json.load(f)
                     AUTHORIZED_MEMBERS = config.get('authorized_members', [])
-                    logger.info(f"Loaded {len(AUTHORIZED_MEMBERS)} authorized members from config.json")
             except Exception as e:
                 logger.error(f"Error loading authorized members from config.json: {str(e)}")
                 logger.error("Falling back to empty authorized members list")
@@ -95,9 +95,27 @@ def load_members_from_knowledge():
         
         # Load regular members from knowledge base
         regular_members = db.get_knowledge("members")
+        
+        # Initialize empty set to track unique members
+        unique_members = set()
+        MEMBERS = []
+        
         if regular_members:
-            MEMBERS = json.loads(regular_members[0][0])
-            logger.info(f"Loaded {len(MEMBERS)} regular members from knowledge base")
+            for entry in regular_members:
+                try:
+                    members_list = json.loads(entry[0])
+                    for member in members_list:
+                        # Create a unique key for each member
+                        member_key = f"{member['username']}_{member['user_id']}"
+                        if member_key not in unique_members:
+                            unique_members.add(member_key)
+                            MEMBERS.append(member)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error decoding JSON for members entry: {str(e)}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing members entry: {str(e)}")
+                    continue
         else:
             MEMBERS = []
 
@@ -110,9 +128,11 @@ def load_members_from_knowledge():
 def save_members_to_knowledge():
     """Save regular members to the knowledge base."""
     try:
-        # Save regular members only
-        db.store_knowledge("members", json.dumps(MEMBERS))
-        logger.info("Successfully saved regular members to knowledge base")
+        # Create a dictionary to filter out duplicates by user_id
+        unique_members = {member['user_id']: member for member in MEMBERS}.values()
+        
+        # Save unique members
+        db.store_knowledge("members", json.dumps(list(unique_members)))
     except Exception as e:
         logger.error(f"Error saving members to knowledge base: {str(e)}")
 
@@ -122,25 +142,66 @@ def load_groups_from_knowledge():
     try:
         # Check if groups are stored in the knowledge base
         groups_knowledge = db.get_knowledge("bot_groups")
+        
         if groups_knowledge:
-            GROUP_MEMBERS = json.loads(groups_knowledge[0][0])
-            logger.info(f"Loaded {len(GROUP_MEMBERS)} groups from knowledge base")
+            # Initialize empty set to track unique groups by ID
+            unique_groups = {}
+            
+            # Process each entry in the knowledge base
+            for entry in groups_knowledge:
+                try:
+                    groups_list = json.loads(entry[0])
+                    for group in groups_list:
+                        # Use group ID as key to ensure uniqueness
+                        if group['id'] not in unique_groups:
+                            unique_groups[group['id']] = group
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error decoding JSON for groups entry: {str(e)}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing groups entry: {str(e)}")
+                    continue
+            
+            # Convert unique groups dictionary to list
+            GROUP_MEMBERS = list(unique_groups.values())
         else:
             GROUP_MEMBERS = []
-            logger.info("No groups found in knowledge base")
     except Exception as e:
         logger.error(f"Error loading groups: {str(e)}")
         logger.error("Falling back to empty groups list")
         GROUP_MEMBERS = []
 
 def save_groups_to_knowledge():
+    global GROUP_MEMBERS
     """Save groups to the knowledge base."""
     try:
-        # Save groups
-        db.store_knowledge("bot_groups", json.dumps(GROUP_MEMBERS))
-        logger.info("Successfully saved groups to knowledge base")
+        # Create a dictionary to filter out duplicates by ID
+        unique_groups = {group['id']: group for group in GROUP_MEMBERS}.values()
+        
+        # Save unique groups
+        db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
     except Exception as e:
         logger.error(f"Error saving groups to knowledge base: {str(e)}")
+
+def delete_groups_from_knowledge():
+    global GROUP_MEMBERS
+    """Delete all groups from the knowledge base and save the current GROUP_MEMBERS list."""
+    try:
+        # First, delete all existing bot_groups entries
+        db.cursor.execute('''
+            DELETE FROM knowledge_base
+            WHERE topic = 'bot_groups'
+        ''')
+        db.conn.commit()
+        
+        # Now save the current GROUP_MEMBERS list (which already has the group removed)
+        # Create a dictionary to filter out duplicates by ID
+        unique_groups = {group['id']: group for group in GROUP_MEMBERS}.values()
+        
+        # Save unique groups
+        db.store_knowledge("bot_groups", json.dumps(list(unique_groups)))
+    except Exception as e:
+        logger.error(f"Error updating groups in knowledge base: {str(e)}")
 
 class Database:
     def __init__(self):
@@ -234,7 +295,6 @@ def is_any_member(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        logger.info(f"User: {user}")
         if user.username and (find_authorized_member_by_username(user.username) or find_member_by_username(user.username)):
             return await func(update, context)
         else:
@@ -312,7 +372,6 @@ async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'user_id': user_id
     })
     save_members_to_knowledge()  # Ensure this function is updated to handle the new structure
-    logger.info(f"Added member: {username} with user_id: {user_id}")
     # Store the authorized member in the knowledge base
     
     # Remove from pending requests
@@ -439,7 +498,6 @@ try:
     
     # Test the model with a simple prompt
     test_response = model.generate_content("Hello")
-    logger.info("Successfully tested model with 'Hello' prompt")
     logger.debug(f"Test response: {test_response.text if hasattr(test_response, 'text') else 'No text attribute'}")
     
 except Exception as e:
@@ -544,6 +602,7 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /contact - Get contact information
 • /events - View sqrDAO events
 • /balance - Check $SQR token balance
+• /sqr_info - Get information about $SQR token
 • /request_member - Request to become a member
 
 """
@@ -614,6 +673,330 @@ def process_message_with_context(message, context):
         logger.error(f"Error generating response: {str(e)}")
         return "I encountered an error while processing your message. Please try again."
 
+async def check_transaction_status(signature: str, command_start_time: datetime, space_url: str = None) -> Tuple[bool, str, Optional[str]]:
+    """Check if a Solana transaction was successful, completed within the deadline, and has correct amount.
+    
+    Args:
+        signature (str): The transaction signature to check
+        command_start_time (datetime): When the command was initiated
+        space_url (str): The Twitter Space URL to summarize
+        
+    Returns:
+        Tuple[bool, str, Optional[str]]: (True if all checks pass, error message if any check fails, job_id if space download was initiated)
+    """
+    try:
+        # Validate signature format
+        if not signature or len(signature) < 32:
+            logger.warning("Invalid signature format: too short or empty")
+            return False, "❌ Invalid transaction signature format", None
+            
+        # Convert signature string to Signature object
+        try:
+            signature_obj = Signature.from_string(signature)
+        except Exception as e:
+            logger.error(f"Error converting signature format: {str(e)}")
+            return False, f"❌ Error converting signature format: {str(e)}", None
+            
+        # Get transaction details according to Solana RPC spec
+        response = solana_client.get_transaction(
+            signature_obj,
+            encoding="jsonParsed",  # Use jsonParsed for better token balance parsing
+        )
+        
+        if not response or not response.value:
+            logger.error("No transaction data found in response")
+            return False, "❌ No transaction data found in response", None
+            
+        # Access the transaction data structure correctly
+        transaction_data = response.value.transaction
+        meta = transaction_data.meta
+        
+        # Check if transaction was successful
+        if not meta:
+            logger.error("No meta data found in transaction")
+            return False, "❌ No meta data found in transaction", None
+            
+        if meta.err:
+            logger.error(f"Transaction failed with error: {meta.err}")
+            return False, f"❌ Transaction failed: {meta.err}", None
+            
+        # Get block time from transaction
+        if not response.value.block_time:
+            logger.error("No block time found in transaction")
+            return False, "❌ No block time found in transaction", None
+            
+        # Convert block time to datetime
+        transaction_time = datetime.fromtimestamp(response.value.block_time)
+        
+        # Check if transaction was completed within the 30-minute window
+        time_diff = transaction_time - command_start_time
+        
+        if time_diff < timedelta(0):
+            logger.warning("Transaction was completed before command was issued")
+            return False, "❌ Transaction was completed before the command was issued", None
+        elif time_diff > timedelta(minutes=30):
+            minutes_late = int((time_diff - timedelta(minutes=30)).total_seconds() / 60)
+            logger.warning(f"Transaction was completed {minutes_late} minutes after deadline")
+            return False, f"❌ Transaction was completed {minutes_late} minutes after the 30-minute window expired", None
+            
+        # Check token amount using pre and post token balances
+        try:
+            # Get pre and post token balances
+            pre_balances = meta.pre_token_balances
+            post_balances = meta.post_token_balances
+            
+            if not pre_balances or not post_balances:
+                logger.error("No token balance information found in transaction")
+                return False, "❌ No token balance information found in transaction", None
+            
+            # Find the token transfer amount by comparing pre and post balances
+            transfer_amount = 0
+            target_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"
+            
+            # First find the token account that received the tokens
+            for post_balance in post_balances:
+                if str(post_balance.mint) == target_mint:
+                    # Find the corresponding pre-balance for this account
+                    pre_balance = next(
+                        (pre for pre in pre_balances 
+                         if str(pre.mint) == target_mint and pre.account_index == post_balance.account_index),
+                        None
+                    )
+                    
+                    if pre_balance:
+                        # Calculate the actual transfer amount (post - pre)
+                        pre_amount = float(pre_balance.ui_token_amount.ui_amount_string)
+                        post_amount = float(post_balance.ui_token_amount.ui_amount_string)
+                        transfer_amount = post_amount - pre_amount
+                        break
+            
+            if transfer_amount <= 0:
+                logger.warning(f"Invalid transfer amount: {transfer_amount}")
+                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: 1000)", None
+                
+            if transfer_amount < 1000:
+                logger.warning(f"Insufficient transfer amount: {transfer_amount}")
+                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: 1000)", None
+                
+        except Exception as e:
+            logger.error(f"Error checking token amount: {str(e)}")
+            logger.error(f"Full error traceback: {traceback.format_exc()}")
+            return False, "❌ Error verifying token amount in transaction", None
+            
+        # If we have a space URL and all checks passed, process the space summarization
+        if space_url:
+            try:
+                # Get API key from environment variables
+                api_key = os.getenv('SQR_FUND_API_KEY')
+                if not api_key:
+                    logger.error("SQR_FUND_API_KEY not found in environment variables")
+                    return False, "❌ API key not configured", None
+
+                # First, download the space
+                download_response = requests.post(
+                    "https://spaces.sqrfund.ai/api/async/download-spaces",
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-API-Key": api_key
+                    },
+                    json={
+                        "spacesUrl": space_url
+                    }
+                )
+
+                if download_response.status_code != 202:
+                    logger.error(f"Failed to initiate space download: {download_response.text}")
+                    return False, f"❌ Failed to initiate space download: {download_response.text}", None
+
+                # Get the job ID from the response
+                try:
+                    job_data = download_response.json()
+                    job_id = job_data.get('jobId')
+                    if not job_id:
+                        logger.error("No job ID received from download request")
+                        return False, "❌ No job ID received from download request", None
+                except Exception as e:
+                    logger.error(f"Error parsing download response: {str(e)}")
+                    return False, f"❌ Error parsing download response: {str(e)}", None
+
+                # Return message about download in progress
+                return True, (
+                    "✅ Transaction verified successfully!\n\n"
+                    "🔄 Space download initiated. This may take a few minutes.\n"
+                    "Please wait while we process your request..."
+                ), job_id
+                    
+            except Exception as e:
+                logger.error(f"Error processing space: {str(e)}")
+                logger.error(f"Full error traceback: {traceback.format_exc()}")
+                return False, f"❌ Error processing space: {str(e)}", None
+            
+        return True, "✅ Transaction verified successfully!", None
+        
+    except Exception as e:
+        logger.error(f"Error checking transaction status: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+        return False, f"❌ Error checking transaction status: {str(e)}", None
+
+async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
+    """Check the status of a space download job and proceed with summarization if complete.
+    
+    Args:
+        job_id (str): The ID of the download job to check
+        space_url (str): The Twitter Space URL to summarize
+        
+    Returns:
+        Tuple[bool, str]: (True if job is complete and summary is ready, error message if any step fails)
+    """
+    try:
+        api_key = os.getenv('SQR_FUND_API_KEY')
+        if not api_key:
+            logger.error("SQR_FUND_API_KEY not found in environment variables")
+            return False, "❌ API key not configured"
+
+        # Check job status
+        status_url = f"https://spaces.sqrfund.ai/api/jobs/{job_id}"
+        
+        status_response = requests.get(
+            status_url,
+            headers={
+                "X-API-Key": api_key
+            }
+        )
+
+        if status_response.status_code != 200:
+            logger.error(f"Failed to check job status. Status code: {status_response.status_code}, Response: {status_response.text}")
+            return False, f"❌ Failed to check job status: {status_response.text}"
+
+        job_status = status_response.json()
+        # Access the nested status field from the job object
+        status = job_status.get('job', {}).get('status')
+
+        if status == 'completed':
+            # Proceed with summarization
+            summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
+            
+            summary_response = requests.post(
+                summary_url,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": api_key
+                },
+                json={
+                    "spacesUrl": space_url,
+                    "promptType": "formatted"
+                }
+            )
+
+            if summary_response.status_code == 200:
+                summary_data = summary_response.json()
+                return True, summary_data.get('summary', '✅ Space summarized successfully!')
+            else:
+                logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
+                return False, f"❌ Failed to summarize space: {summary_response.text}"
+        elif status == 'failed':
+            error_msg = job_status.get('job', {}).get('error', 'Unknown error')
+            logger.error(f"Space download failed with error: {error_msg}")
+            
+            # Provide more user-friendly error messages for common issues
+            if "yt-dlp process exited with code 1" in error_msg:
+                return False, (
+                    "❌ Failed to download the Space. This could be due to:\n"
+                    "• The Space URL is invalid or no longer available\n"
+                    "• The Space is private or restricted\n"
+                    "• The Space has been deleted\n"
+                    "• Technical issues with the Space download\n\n"
+                    "Please verify the Space URL and try again."
+                )
+            else:
+                return False, f"❌ Space download failed: {error_msg}"
+        elif status == 'processing':
+            await asyncio.sleep(60)  # Wait for 60 seconds
+            return await check_job_status(job_id, space_url)  # Recursive call to check again
+        else:
+            return False, "🔄 Space download is still in progress. Please wait..."
+
+    except Exception as e:
+        logger.error(f"Error checking job status: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+        return False, f"❌ Error checking job status: {str(e)}"
+
+async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, space_url: str, chat_id: int, message_id: int, max_attempts: int = 30):
+    """Periodically check job status and update the user.
+    
+    Args:
+        context: The context object from the application
+        job_id: The ID of the download job to check
+        space_url: The Twitter Space URL to summarize
+        chat_id: The chat ID to send updates to
+        message_id: The message ID to update
+        max_attempts: Maximum number of attempts (default 30 = 5 minutes)
+    """
+    attempt = 0
+    while attempt < max_attempts:
+        is_complete, message = await check_job_status(job_id, space_url)
+        
+        if is_complete:
+            try:
+                # Split long messages into chunks of 4000 characters (Telegram's limit is 4096)
+                message_chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
+                
+                # Send each chunk
+                for i, chunk in enumerate(message_chunks):
+                    if i == 0:
+                        # First chunk updates the original message
+                        await context.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            text=chunk,
+                            parse_mode=ParseMode.HTML
+                        )
+                    else:
+                        # Additional chunks as new messages
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=chunk,
+                            parse_mode=ParseMode.HTML
+                        )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to send summary message: {str(e)}")
+                logger.error(f"Full error traceback: {traceback.format_exc()}")
+                return False
+        
+        # Update the status message
+        try:
+            # Split long messages into chunks
+            status_message = f"{message}\n\n⏳ Checking again in 60 seconds..."
+            if len(status_message) > 4000:
+                status_message = status_message[:3997] + "..."
+            
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=status_message,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            logger.error(f"Error updating status message: {str(e)}")
+            logger.error(f"Full error traceback: {traceback.format_exc()}")
+        
+        # Wait for 60 seconds before next check
+        await asyncio.sleep(60)
+        attempt += 1
+    
+    # If we've reached max attempts, send a timeout message
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ Timeout: Space processing took too long. Please try again later.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        logger.error(f"Failed to send timeout message: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+    return False
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming messages."""
     try:
@@ -621,10 +1004,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not message or not message.text:
             return
 
-        # Check if we're awaiting a signature for space summarization
+        # First check if we're awaiting a signature for space summarization
         if context.user_data.get('awaiting_signature'):
-            # Check if the 30-minute time limit has expired
             command_start_time = context.user_data.get('command_start_time')
+            space_url = context.user_data.get('space_url')
+            
             if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
                 await message.reply_text(
                     "❌ Time limit expired!\n"
@@ -632,67 +1016,69 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "Please use /summarize_space command again to start a new transaction.",
                     parse_mode=ParseMode.HTML
                 )
-                # Reset the state
                 context.user_data['awaiting_signature'] = False
                 context.user_data['command_start_time'] = None
+                context.user_data['space_url'] = None
+                context.user_data['job_id'] = None
+                context.user_data['failed_attempts'] = 0
                 return
 
             signature = message.text.strip()
             
-            # Check transaction status
-            is_successful = await check_transaction_status(signature)
+            is_successful, message_text, job_id = await check_transaction_status(signature, command_start_time, space_url)
             
             if is_successful:
-                await message.reply_text(
+                # Send initial status message
+                status_message = await message.reply_text(
                     "✅ Transaction verified successfully!\n"
                     "Processing your request...",
                     parse_mode=ParseMode.HTML
                 )
-                # TODO: Add API call here for further processing
-                # For now, just return success
-                await message.reply_text("Success", parse_mode=ParseMode.HTML)
+                
+                # If we have a job ID, start periodic checking
+                if job_id:
+                    # Store the job_id in user_data
+                    context.user_data['job_id'] = job_id
+                    # Start the periodic check in the background
+                    asyncio.create_task(periodic_job_check(
+                        context=context,
+                        job_id=job_id,
+                        space_url=space_url,
+                        chat_id=message.chat_id,
+                        message_id=status_message.message_id
+                    ))
+                else:
+                    await message.reply_text(message_text, parse_mode=ParseMode.HTML)
             else:
-                # Get detailed logs from the transaction check
-                try:
-                    # Get transaction details for error logging
-                    signature_bytes = base58.b58decode(signature)
-                    signature_obj = Signature.from_bytes(signature_bytes)
-                    response = solana_client.get_transaction(
-                        signature_obj,
-                        encoding="json",
-                        max_supported_transaction_version=0
-                    )
-                    
-                    error_details = "Transaction verification failed. Details:\n"
-                    if response and response.value:
-                        if hasattr(response.value, 'meta') and response.value.meta:
-                            if hasattr(response.value.meta, 'err') and response.value.meta.err:
-                                error_details += f"Error: {response.value.meta.err}\n"
-                            else:
-                                error_details += "No specific error found in transaction meta.\n"
-                        else:
-                            error_details += "No transaction meta data available.\n"
-                    else:
-                        error_details += "No transaction data found.\n"
-                    
+                # Increment failed attempts counter
+                failed_attempts = context.user_data.get('failed_attempts', 0) + 1
+                context.user_data['failed_attempts'] = failed_attempts
+                
+                if failed_attempts >= 3:
                     await message.reply_text(
-                        f"❌ {error_details}\n"
-                        "Please ensure the transaction is completed and try again.",
+                        "❌ Maximum number of failed attempts reached.\n"
+                        "Please use /summarize_space command again to start a new transaction.",
                         parse_mode=ParseMode.HTML
                     )
-                except Exception as e:
-                    logger.error(f"Error getting transaction details: {str(e)}")
+                    context.user_data['awaiting_signature'] = False
+                    context.user_data['command_start_time'] = None
+                    context.user_data['space_url'] = None
+                    context.user_data['job_id'] = None
+                    context.user_data['failed_attempts'] = 0
+                else:
+                    remaining_attempts = 3 - failed_attempts
                     await message.reply_text(
-                        "❌ Transaction verification failed.\n"
-                        "Please ensure the transaction is completed and try again.",
+                        f"{message_text}\n\n"
+                        f"Please ensure you:\n"
+                        f"1. Send exactly 1000 $SQR tokens\n"
+                        f"2. Complete the transaction within 30 minutes\n"
+                        f"3. Send the correct transaction signature\n\n"
+                        f"⚠️ You have {remaining_attempts} attempt{'s' if remaining_attempts > 1 else ''} remaining.",
                         parse_mode=ParseMode.HTML
                     )
-            
-            # Reset the state
-            context.user_data['awaiting_signature'] = False
-            context.user_data['command_start_time'] = None
             return
 
+        # Only proceed with other message handling if we're not awaiting a signature
         # Check for scammer accusations in any chat
         if "scammer" in message.text.lower():
             await message.reply_text("🚫 Rome wasn't built in one day! Building something meaningful takes time and dedication. Let's support our founders who are working hard to create value! 💪")
@@ -734,8 +1120,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Format and send response with HTML formatting
             formatted_text = format_response_for_telegram(response)
-            
-            logger.debug(f"Formatted response: {formatted_text}")
             
             await message.reply_text(
                 formatted_text,
@@ -779,8 +1163,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Format and send response with HTML formatting
             formatted_text = format_response_for_telegram(response)
             
-            logger.debug(f"Formatted response: {formatted_text}")
-            
             await message.reply_text(
                 formatted_text,
                 parse_mode=ParseMode.HTML
@@ -813,6 +1195,7 @@ async def set_bot_commands(application):
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
         ("balance", "Check $SQR token balance"),  # Added balance command
+        ("sqr_info", "Get information about $SQR token"),
         ("request_member", "Request to become a sqrDAO member")
     ]
     
@@ -917,15 +1300,16 @@ async def get_sqr_info_command(update: Update, context: ContextTypes.DEFAULT_TYP
             
             # Format the message
             message = (
-                "🪙 *SQR Token Information*\n\n"
+                "🪙 <b>SQR Token Information</b>\n\n"
                 f"💰 Price: ${price_usd}\n"
                 f"📈 24h Change: {price_change_24h}%\n"
                 f"📊 24h Volume: {volume_24h}\n"
                 f"💎 Market Cap: {market_cap}\n\n"
-                "Data provided by GeckoTerminal"
+                "Data provided by GeckoTerminal\n\n"
+                "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n"
             )
             
-            await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(message, parse_mode=ParseMode.HTML)
         else:
             await update.message.reply_text("❌ Sorry, I couldn't fetch SQR token information at the moment. Please try again later.")
             
@@ -1246,7 +1630,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wallet_address = None
     display_address = input_address
     if input_address.lower().endswith('.sol') or not (input_address.startswith('1') or input_address.startswith('2') or input_address.startswith('3') or input_address.startswith('4') or input_address.startswith('5') or input_address.startswith('6') or input_address.startswith('7') or input_address.startswith('8') or input_address.startswith('9')):
-        logger.info(f"Resolving SNS domain: {input_address}")
         resolved_address = await resolve_sns_domain(input_address)
         if resolved_address:
             wallet_address = resolved_address
@@ -1261,8 +1644,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wallet_address = input_address
         display_address = f"{wallet_address[:4]}...{wallet_address[-4:]}"
 
-    logger.info(f"Checking balance for wallet: {wallet_address} and token: {token_mint}")
-
     try:
         # Validate addresses
         try:
@@ -1271,7 +1652,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             token_program_id = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
             # Create a dummy keypair as payer since we're only reading data
             dummy_payer = Keypair()
-            logger.info("Successfully validated addresses and created token program ID")
         except ValueError:
             await update.message.reply_text(
                 "❌ Invalid wallet address format.",
@@ -1286,11 +1666,9 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             program_id=token_program_id,
             payer=dummy_payer
         )
-        logger.info("Successfully initialized Token client")
 
         # Get token accounts
         token_accounts = token.get_accounts_by_owner_json_parsed(owner=wallet_pubkey)
-        logger.info(f"Retrieved token accounts: {token_accounts}")
         
         if not token_accounts or not token_accounts.value:
             await update.message.reply_text(
@@ -1301,30 +1679,21 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Get balance from the first account
         account = token_accounts.value[0]
-        logger.info(f"First account data: {account}")
         
         # Access the parsed data structure correctly
         token_amount = account.account.data.parsed['info']['tokenAmount']
-        logger.info(f"Token amount data: {token_amount}")
         
         balance = int(token_amount['amount'])
         decimals = token_amount['decimals']
         actual_balance = balance / (10 ** decimals)
-        logger.info(f"Calculated balance: {actual_balance} (raw: {balance}, decimals: {decimals})")
 
         # Get token metadata using RPC directly
         try:
-            logger.info("Fetching token metadata...")
             # Get token metadata from the RPC
             token_metadata = solana_client.get_account_info_json_parsed(Pubkey.from_string(token_mint))
-            logger.info(f"Raw token metadata response: {token_metadata}")
             
             if token_metadata and token_metadata.value:
-                logger.info(f"Token metadata value: {token_metadata.value}")
-                logger.info(f"Token metadata parsed data: {token_metadata.value.data.parsed}")
-                
                 mint_data = token_metadata.value.data.parsed
-                logger.info(f"Mint data: {mint_data}")
                 
                 # Find the tokenMetadata extension
                 token_metadata_ext = next((ext for ext in mint_data['info']['extensions'] 
@@ -1333,13 +1702,10 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if token_metadata_ext:
                     token_name = token_metadata_ext['state'].get('name', 'Unknown Token')
                     token_symbol = token_metadata_ext['state'].get('symbol', '???')
-                    logger.info(f"Extracted token name: {token_name}, symbol: {token_symbol}")
                 else:
-                    logger.warning("No tokenMetadata extension found")
                     token_name = 'Unknown Token'
                     token_symbol = '???'
             else:
-                logger.warning("No token metadata found in response")
                 token_name = 'Unknown Token'
                 token_symbol = '???'
         except Exception as e:
@@ -1365,58 +1731,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
-async def check_transaction_status(signature: str) -> bool:
-    """Check if a Solana transaction was successful.
-    
-    Args:
-        signature (str): The transaction signature to check
-        
-    Returns:
-        bool: True if transaction succeeded, False otherwise
-    """
-    try:
-        # Validate signature format
-        if not signature or len(signature) < 32:
-            logger.error("Invalid transaction signature format")
-            return False
-            
-        # Convert signature string to Signature object
-        try:
-            signature_bytes = base58.b58decode(signature)
-            signature_obj = Signature.from_bytes(signature_bytes)
-            logger.info("Successfully converted signature string to Signature object")
-        except Exception as e:
-            logger.error(f"Error converting signature format: {str(e)}")
-            return False
-            
-        # Get transaction details
-        response = solana_client.get_transaction(
-            signature_obj,
-            encoding="json",
-            max_supported_transaction_version=0
-        )
-        
-        if not response or not response.value:
-            logger.warning("No transaction data found in response")
-            return False
-            
-        transaction_data = response.value
-        
-        # Check if transaction was successful
-        if hasattr(transaction_data, 'meta') and transaction_data.meta:
-            if hasattr(transaction_data.meta, 'err') and transaction_data.meta.err:
-                logger.error(f"Transaction failed: {transaction_data.meta.err}")
-                return False
-            return True
-            
-        logger.warning("No meta data found in transaction")
-        return False
-        
-    except Exception as e:
-        logger.error(f"Error checking transaction status: {str(e)}")
-        logger.error(f"Full error traceback: {traceback.format_exc()}")
-        return False
-
 @is_member
 async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /list_members command - List all members."""
@@ -1435,50 +1749,38 @@ async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Add this handler to detect when bot is added to or removed from groups
 async def handle_group_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Track when bot is added to or removed from a group."""
-    global GROUP_MEMBERS
+    """Track when bot is added to or removed from a group or channel, or when a group is migrated to a supergroup."""
+    global GROUP_MEMBERS  # Add global declaration
     
     # Check for my_chat_member updates
-    if update.my_chat_member and update.my_chat_member.chat.type in ['group', 'supergroup']:
+    if update.my_chat_member and update.my_chat_member.chat.type in ['group', 'supergroup', 'channel']:
         chat = update.my_chat_member.chat
-        old_status = update.my_chat_member.old_chat_member.status if update.my_chat_member.old_chat_member else None
         new_status = update.my_chat_member.new_chat_member.status if update.my_chat_member.new_chat_member else None
         
-        logger.info(f"Bot status changed in chat {chat.title} ({chat.id}) from {old_status} to {new_status}")
-        
-        # Bot was added to a group
-        if new_status in ['member', 'administrator'] and old_status in [None, 'left', 'kicked']:
-            # Check if this group is already in our list
+        logger.debug(f"Group/Channel status update: {chat.title} (ID: {chat.id}) - New Status: {new_status}")
+
+        # Bot was added to a group or channel
+        if new_status in ['member', 'administrator']:
             if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
                 GROUP_MEMBERS.append({
                     'id': chat.id,
                     'title': chat.title,
-                    'type': chat.type,
+                    'type': chat.type,  # Ensure type is captured
                     'added_at': datetime.now().isoformat()
                 })
-                logger.info(f"Added new group: {chat.title} ({chat.id})")
                 save_groups_to_knowledge()
         
-        # Bot was removed from a group
-        elif new_status in ['left', 'kicked'] and old_status in ['member', 'administrator']:
-            # Remove from our list if present
+        # Bot was removed from a group or channel
+        elif new_status in ['left', 'kicked']:
+            # Remove the group from GROUP_MEMBERS
             GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != chat.id]
-            logger.info(f"Removed group: {chat.title} ({chat.id})")
-            save_groups_to_knowledge()
-    
-    # Also check normal message updates from groups
-    elif update.message and update.message.chat.type in ['group', 'supergroup']:
-        chat = update.message.chat
-        # If this is a group message and the group is not in our list, add it
-        if not any(g['id'] == chat.id for g in GROUP_MEMBERS):
-            GROUP_MEMBERS.append({
-                'id': chat.id,
-                'title': chat.title,
-                'type': chat.type,
-                'added_at': datetime.now().isoformat()
-            })
-            logger.info(f"Added group from message: {chat.title} ({chat.id})")
-            save_groups_to_knowledge()
+            logger.debug(f"Successfully removed group/channel: {chat.title} (ID: {chat.id}) from GROUP_MEMBERS.")
+            
+            # Delete all groups from knowledge base and save the updated GROUP_MEMBERS
+            delete_groups_from_knowledge()
+            
+            # Reload groups from knowledge base to ensure consistency
+            # load_groups_from_knowledge()
 
 # Replace the get_bot_groups function with this simpler version
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
@@ -1488,7 +1790,6 @@ async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
         if hasattr(context, 'message') and context.message and context.message.chat:
             chat = context.message.chat
             if chat.type in ['group', 'supergroup'] and not any(g['id'] == chat.id for g in GROUP_MEMBERS):
-                logger.info(f"Adding current message chat to groups: {chat.title} ({chat.id})")
                 GROUP_MEMBERS.append({
                     'id': chat.id,
                     'title': chat.title,
@@ -1499,7 +1800,6 @@ async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> List[dict]:
     except Exception as e:
         logger.error(f"Error checking current chat: {str(e)}")
     
-    logger.info(f"Found {len(GROUP_MEMBERS)} groups in database")
     return GROUP_MEMBERS
 
 # Add this command to manually add a group
@@ -1561,29 +1861,47 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Add this command to list all groups
 @is_member
 async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /list_groups command - List all tracked groups."""
+    """Handle /list_groups command - List all tracked groups and channels."""
+    global GROUP_MEMBERS
+
     if not GROUP_MEMBERS:
         await update.message.reply_text(
-            "📝 No groups found.",
+            "📝 No groups or channels found.",
             parse_mode=ParseMode.HTML
         )
         return
-    
-    groups_text = "<b>Current Groups:</b>\n\n"
+
+    groups_text = "<b>Current Groups and Channels:</b>\n\n"
     for group in GROUP_MEMBERS:
-        added_at = group.get('added_at', 'unknown')
-        added_by = f" (by @{group.get('added_by', 'system')})" if 'added_by' in group else ""
-        groups_text += f"• {group['title']} ({group['id']}) - {group['type']}{added_by}\n"
+        # Escape special characters in title
+        title = group['title'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        group_id = group['id']
+        group_type = group['type']
+        added_by = group.get('added_by', 'system')
+        
+        # Only add the "by @username" part if there's a username
+        added_by_text = f" (by @{added_by})" if added_by != 'system' else ""
+        
+        # Build the line with proper HTML escaping
+        groups_text += f"• {title} ({group_id}) - {group_type}{added_by_text}\n"
     
-    await update.message.reply_text(groups_text, parse_mode=ParseMode.HTML)
+    try:
+        await update.message.reply_text(groups_text, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.error(f"Error sending groups list: {str(e)}")
+        # Fallback to plain text if HTML parsing fails
+        plain_text = groups_text.replace('<b>', '').replace('</b>', '')
+        await update.message.reply_text(plain_text)
 
 # Add this command to remove a group
 @is_member
 async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /remove_group command - Remove a group ID."""
+    global GROUP_MEMBERS  # Add global declaration
+    
     if not context.args:
         await update.message.reply_text(
-            "❌ Please provide a group ID to remove.\n"
+            "<b>❌ Please provide a group ID to remove.</b>\n"
             "Usage: /remove_group [group_id]\n"
             "Example: /remove_group -1001234567890\n\n"
             "Use /list_groups to see all tracked groups.",
@@ -1594,63 +1912,103 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         group_id = int(context.args[0])
         
-        # Find and remove the group
-        group = next((g for g in GROUP_MEMBERS if g['id'] == group_id), None)
-        if group:
-            GROUP_MEMBERS.remove(group)
-            save_groups_to_knowledge()
+        # Remove all groups with the specified ID
+        initial_count = len(GROUP_MEMBERS)
+        GROUP_MEMBERS = [g for g in GROUP_MEMBERS if g['id'] != group_id]
+        removed_count = initial_count - len(GROUP_MEMBERS)
+
+        if removed_count > 0:
+            # Update the knowledge base with the new GROUP_MEMBERS list
+            delete_groups_from_knowledge()
             await update.message.reply_text(
-                f"✅ Successfully removed group: {group['title']} ({group_id})",
+                f"<b>✅ Successfully removed {removed_count} group(s) with ID:</b> {group_id}",
                 parse_mode=ParseMode.HTML
             )
         else:
             await update.message.reply_text(
-                f"⚠️ No group found with ID {group_id}.",
+                f"<b>⚠️ No group found with ID {group_id}.</b>",
                 parse_mode=ParseMode.HTML
             )
     except ValueError:
         await update.message.reply_text(
-            "❌ Invalid group ID. Please provide a valid numerical ID.",
+            "<b>❌ Invalid group ID. Please provide a valid numerical ID.</b>",
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
         logger.error(f"Error removing group: {str(e)}")
         await update.message.reply_text(
-            f"❌ Error removing group: {str(e)}",
+            f"<b>❌ Error removing group:</b> {str(e)}",
             parse_mode=ParseMode.HTML
         )
 
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mass_message command - Send a message to all regular users and groups."""
-    if not context.args:
+    """Handle /mass_message command - Send a message with optional image to all users and groups."""
+    # Check if there's an image attached
+    photo = None
+    caption = None
+    grouptype = None
+    
+    # Check if there are enough arguments
+    if len(context.args) < 1:  # At least a message and a grouptype
         await update.message.reply_text(
-            "❌ Please provide a message to send.\n"
-            "Usage: /mass_message [message]\n"
-            "Example: /mass_message Hello everyone! This is an important announcement.",
+            "❌ Please provide a message and an optional grouptype.\n"
+            "Usage:\n"
+            "• /mass_message [message] | [grouptype]\n"
+            "• Example: /mass_message Hello everyone | sqrdao\n"
+            "If grouptype is 'sqrdao', the message will only be sent to groups/channels with 'sqrdao' in their title.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Check if the separator is present in the arguments
+    if "|" in context.args:
+        # Split the arguments into message parts and grouptype
+        separator_index = context.args.index("|")
+        message_parts = context.args[:separator_index]  # All arguments before the separator
+        grouptype = context.args[separator_index + 1].strip().lower() if separator_index + 1 < len(context.args) else None
+        
+        # Join the message parts into a single string
+        message = " ".join(message_parts).strip()
+    else:
+        message = " ".join(context.args)  # If no separator, treat all as message
+
+    if update.message.photo:
+        # Get the largest photo size
+        photo = update.message.photo[-1].file_id
+        caption = update.message.caption if update.message.caption else ""
+    elif not message:
+        await update.message.reply_text(
+            "❌ Please provide a message or image to send.",
             parse_mode=ParseMode.HTML
         )
         return
     
-    # Get the message from arguments
-    message = " ".join(context.args)
-    
     # Get all regular users (excluding authorized members)
-    valid_users = [user for user in MEMBERS if user.get('user_id')]  # Only regular members
+    valid_users = [user for user in MEMBERS if user.get('user_id')]
     
-    # Get all groups where the bot is a member
+    # Get all groups and channels where the bot is a member
     all_groups = await get_bot_groups(context)
-    
-    if not valid_users and not all_groups:
+
+    # Filter groups based on grouptype if specified
+    if grouptype == "sqrdao":
+        filtered_groups = [g for g in all_groups if "sqrdao" in g['title'].lower()]
+    elif grouptype == "summit":
+        filtered_groups = [g for g in all_groups if "summit" in g['title'].lower()]
+    else:
+        filtered_groups = all_groups
+
+    if not valid_users and not filtered_groups:
         await update.message.reply_text(
-            "❌ No valid users or groups found to send the message to.",
+            "❌ No valid users or groups/channels found to send the message to.",
             parse_mode=ParseMode.HTML
         )
         return
     
     # Send confirmation to the sender
+    group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else " (Summit groups only)" if grouptype == "summit" else ""
     await update.message.reply_text(
-        f"📤 Starting to send message to {len(valid_users)} users and {len(all_groups)} groups...",
+        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
         parse_mode=ParseMode.HTML
     )
     
@@ -1661,41 +2019,55 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_failure_count = 0
     failed_users = []
     failed_groups = []
-    
-    # Send message to each valid user
-    for user in valid_users:
+
+    for group in filtered_groups:
         try:
-            await context.bot.send_message(
-                chat_id=user['user_id'],
-                text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
-                parse_mode=ParseMode.HTML
-            )
-            user_success_count += 1
-        except Exception as e:
-            user_failure_count += 1
-            failed_users.append(f"@{user['username']}")
-            logger.error(f"Failed to send message to user {user['username']}: {str(e)}")
-    
-    # Send message to each group
-    for group in all_groups:
-        try:
-            await context.bot.send_message(
-                chat_id=group['id'],
-                text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
-                parse_mode=ParseMode.HTML
-            )
+            if photo:
+                # Determine announcement format based on grouptype
+                if grouptype in ["sqrdao", "summit"]:
+                    announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
+                else:
+                    announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
+                
+                # Send photo with caption, stripping the command if present
+                formatted_caption = f"{announcement_prefix}\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
+                await context.bot.send_photo(
+                    chat_id=group['id'],
+                    photo=photo,
+                    caption=formatted_caption,
+                    parse_mode=ParseMode.HTML if formatted_caption else None
+                )
+            else:
+                # Determine announcement format based on grouptype
+                if grouptype in ["sqrdao", "summit"]:
+                    announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
+                else:
+                    announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
+                
+                # Send text message without the command
+                await context.bot.send_message(
+                    chat_id=group['id'],
+                    text=f"{announcement_prefix}\n\n{message}",
+                    parse_mode=ParseMode.HTML
+                )
             group_success_count += 1
+            
         except Exception as e:
             group_failure_count += 1
             failed_groups.append(f"{group['title']} ({group['type']})")
-            logger.error(f"Failed to send message to group {group['title']}: {str(e)}")
+            logger.error(f"Failed to send to group/channel {group['title']} (ID: {group['id']}): {str(e)}")
     
     # Send summary to the sender
-    summary = f"✅ Message delivery complete!\n\n"
+    summary = f"✅ {'Image' if photo else 'Message'} delivery complete!\n\n"
+    
+    if grouptype == "sqrdao":
+        summary += "📝 Message was sent to sqrDAO groups only\n\n"
+    elif grouptype == "summit":
+        summary += "📝 Message was sent to Summit groups only\n\n"
     
     if failed_users:
         summary += f"❌ Failed to send to users:\n"
-        summary += "\n".join(f"• {user}" for user in failed_users[:5])  # Show first 5 failed users
+        summary += "\n".join(f"• {user}" for user in failed_users[:5])
         if len(failed_users) > 5:
             summary += f"\n... and {len(failed_users) - 5} more users"
     
@@ -1703,23 +2075,56 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary += f"• Successfully sent: {user_success_count}\n"
     summary += f"• Failed to send: {user_failure_count}\n"
     
-    summary += f"\n\n📊 Group Statistics:\n"
+    summary += "\n\n📊 Group/Channel Statistics:\n"
     summary += f"• Successfully sent: {group_success_count}\n"
     summary += f"• Failed to send: {group_failure_count}\n"
-    
-    if failed_groups:
-        summary += f"\n❌ Failed to send to groups:\n"
-        summary += "\n".join(f"• {group}" for group in failed_groups[:5])  # Show first 5 failed groups
-        if len(failed_groups) > 5:
-            summary += f"\n... and {len(failed_groups) - 5} more groups"
     
     await update.message.reply_text(summary, parse_mode=ParseMode.HTML)
 
 async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /summarize_space command - Process SQR token transfer and verify transaction."""
-    # Store the user's state in context with timestamp
+    # Check if there's already an active transaction window
+    if context.user_data.get('awaiting_signature'):
+        command_start_time = context.user_data.get('command_start_time')
+        if command_start_time and (datetime.now() - command_start_time) <= timedelta(minutes=30):
+            # Calculate remaining time
+            remaining_time = timedelta(minutes=30) - (datetime.now() - command_start_time)
+            minutes = int(remaining_time.total_seconds() // 60)
+            seconds = int(remaining_time.total_seconds() % 60)
+            
+            await update.message.reply_text(
+                f"⚠️ <b>Active Transaction Window</b>\n\n"
+                f"You already have an active transaction window with {minutes}m {seconds}s remaining.\n"
+                f"Please complete the current transaction or wait for the window to expire before starting a new one.\n\n"
+                f"If you need to cancel the current transaction, please contact an administrator.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+    # Check if a space URL was provided
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide a X Space URL.\n"
+            "Usage: /summarize_space [space_url]\n"
+            "Example: /summarize_space https://x.com/i/spaces/1234567890",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Validate the space URL
+    space_url = context.args[0]
+    if not space_url.startswith("https://x.com/i/spaces/"):
+        await update.message.reply_text(
+            "❌ Invalid X Space URL format.\n"
+            "Please provide a valid URL starting with 'https://x.com/i/spaces/'",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Store the user's state in context with timestamp and space URL
     context.user_data['awaiting_signature'] = True
     context.user_data['command_start_time'] = datetime.now()
+    context.user_data['space_url'] = space_url
     
     # Send instructions to the user
     instructions = (
@@ -1730,7 +2135,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2. Copy the transaction signature\n"
         "3. Paste the signature in this chat\n\n"
         "⚠️ <i>Note: The transaction must be completed within 30 minutes from now.</i>\n"
-        "⏰ Time limit: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
+        "⏰ Deadline: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
     )
     
     await update.message.reply_text(instructions, parse_mode=ParseMode.HTML)
@@ -1779,9 +2184,13 @@ def main():
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_group_status))
         application.add_handler(ChatMemberHandler(handle_group_status))
+        # Add handler for photos with mass_message command in caption
+        application.add_handler(MessageHandler(
+            filters.PHOTO & filters.CaptionRegex(r'^/mass_message'), mass_message
+        ))
 
         # Start the Bot
-        logger.info("Starting bot...")
+        logger.debug("Starting bot...")  # This can be kept for clarity
         application.post_init = set_bot_commands
         
         # Start polling and set the bot ID after the bot is running

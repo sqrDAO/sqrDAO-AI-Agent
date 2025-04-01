@@ -16,7 +16,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - 👥 Member management system
 - 💬 Group chat support
 - 🔍 Web search capabilities
-- 💰 SQR token balance checking
+- 💰 SQR token functions (information & balance checking)
 - 📢 Mass messaging system
 
 ### Member Management
@@ -41,7 +41,9 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - `/contact` - Get contact information
 - `/events` - View sqrDAO events
 - `/balance` - Check $SQR token balance
+- `/sqr_info` - Get information about the $SQR token
 - `/request_member` - Request to become a member
+- `/summarize_space` - Summarize a X (Twitter) Space (requires 1000 $SQR tokens)
 
 ### Member Commands
 - `/resources` - Access internal resources for sqrDAO Members and sqrFUND Chads
@@ -54,7 +56,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - `/reject_member` - Reject a member request
 - `/list_requests` - View pending member requests
 - `/list_members` - List all current members
-- `/mass_message` - Send a message to all regular members and groups
+- `/mass_message` - Send a message or image to all users and groups/channels
 - `/add_group` - Manually add a group to the bot's tracking
 - `/list_groups` - List all tracked groups
 - `/remove_group` - Remove a group from tracking
@@ -82,11 +84,24 @@ To find a group ID:
 ## Mass Messaging
 
 The `/mass_message` command has been updated to:
-- Send messages to regular members only (excluding authorized members)
-- Send messages to all tracked groups
+- Send messages or images to regular members only (excluding authorized members)
+- Send messages to all tracked groups with customizable prefixes
+- Support for sqrDAO and Summit group filtering
 - Provide detailed delivery statistics
 - Show failed message attempts
 - Include proper error handling and logging
+- Support for both text messages and images with captions
+
+### Space Summarization
+
+The `/summarize_space` command allows users to:
+- Submit X (Twitter) Space URLs for summarization
+- Process SQR token transfers (1000 tokens required)
+- Verify transactions within a 30-minute window
+- Track download and summarization progress
+- Receive formatted summaries of Space content
+- Handle multiple attempts with proper error messages
+- Support for both private and group chats
 
 ## Setup
 
