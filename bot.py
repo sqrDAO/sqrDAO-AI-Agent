@@ -673,7 +673,7 @@ def process_message_with_context(message, context):
         logger.error(f"Error generating response: {str(e)}")
         return "I encountered an error while processing your message. Please try again."
 
-async def check_transaction_status(signature: str, command_start_time: datetime, space_url: str = None) -> Tuple[bool, str]:
+async def check_transaction_status(signature: str, command_start_time: datetime, space_url: str = None) -> Tuple[bool, str, Optional[str]]:
     """Check if a Solana transaction was successful, completed within the deadline, and has correct amount.
     
     Args:
@@ -682,7 +682,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         space_url (str): The Twitter Space URL to summarize
         
     Returns:
-        Tuple[bool, str]: (True if all checks pass, error message if any check fails)
+        Tuple[bool, str, Optional[str]]: (True if all checks pass, error message if any check fails, job_id if space download was initiated)
     """
     logger.info(f"Starting transaction status check for signature: {signature[:20]}...")
     logger.info(f"Command start time: {command_start_time}")
@@ -692,7 +692,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         # Validate signature format
         if not signature or len(signature) < 32:
             logger.warning("Invalid signature format: too short or empty")
-            return False, "❌ Invalid transaction signature format"
+            return False, "❌ Invalid transaction signature format", None
             
         # Convert signature string to Signature object
         try:
@@ -701,7 +701,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             logger.debug("Successfully converted signature")
         except Exception as e:
             logger.error(f"Error converting signature format: {str(e)}")
-            return False, f"❌ Error converting signature format: {str(e)}"
+            return False, f"❌ Error converting signature format: {str(e)}", None
             
         # Get transaction details according to Solana RPC spec
         logger.info("Fetching transaction details from Solana RPC")
@@ -712,7 +712,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         
         if not response or not response.value:
             logger.error("No transaction data found in response")
-            return False, "❌ No transaction data found in response"
+            return False, "❌ No transaction data found in response", None
             
         # Access the transaction data structure correctly
         logger.debug("Accessing transaction data structure")
@@ -722,16 +722,16 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         # Check if transaction was successful
         if not meta:
             logger.error("No meta data found in transaction")
-            return False, "❌ No meta data found in transaction"
+            return False, "❌ No meta data found in transaction", None
             
         if meta.err:
             logger.error(f"Transaction failed with error: {meta.err}")
-            return False, f"❌ Transaction failed: {meta.err}"
+            return False, f"❌ Transaction failed: {meta.err}", None
             
         # Get block time from transaction
         if not response.value.block_time:
             logger.error("No block time found in transaction")
-            return False, "❌ No block time found in transaction"
+            return False, "❌ No block time found in transaction", None
             
         # Convert block time to datetime
         transaction_time = datetime.fromtimestamp(response.value.block_time)
@@ -743,11 +743,11 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         
         if time_diff < timedelta(0):
             logger.warning("Transaction was completed before command was issued")
-            return False, "❌ Transaction was completed before the command was issued"
+            return False, "❌ Transaction was completed before the command was issued", None
         elif time_diff > timedelta(minutes=30):
             minutes_late = int((time_diff - timedelta(minutes=30)).total_seconds() / 60)
             logger.warning(f"Transaction was completed {minutes_late} minutes after deadline")
-            return False, f"❌ Transaction was completed {minutes_late} minutes after the 30-minute window expired"
+            return False, f"❌ Transaction was completed {minutes_late} minutes after the 30-minute window expired", None
             
         # Check token amount using pre and post token balances
         try:
@@ -758,7 +758,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             
             if not pre_balances or not post_balances:
                 logger.error("No token balance information found in transaction")
-                return False, "❌ No token balance information found in transaction"
+                return False, "❌ No token balance information found in transaction", None
             
             # Find the token transfer amount by comparing pre and post balances
             transfer_amount = 0
@@ -787,16 +787,16 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             
             if transfer_amount <= 0:
                 logger.warning(f"Invalid transfer amount: {transfer_amount}")
-                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: 1000)"
+                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: 1000)", None
                 
             if transfer_amount < 1000:
                 logger.warning(f"Insufficient transfer amount: {transfer_amount}")
-                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: 1000)"
+                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: 1000)", None
                 
         except Exception as e:
             logger.error(f"Error checking token amount: {str(e)}")
             logger.error(f"Full error traceback: {traceback.format_exc()}")
-            return False, "❌ Error verifying token amount in transaction"
+            return False, "❌ Error verifying token amount in transaction", None
             
         # If we have a space URL and all checks passed, process the space summarization
         if space_url:
@@ -806,7 +806,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
                 api_key = os.getenv('SQR_FUND_API_KEY')
                 if not api_key:
                     logger.error("SQR_FUND_API_KEY not found in environment variables")
-                    return False, "❌ API key not configured"
+                    return False, "❌ API key not configured", None
 
                 # First, download the space
                 logger.info("Initiating space download")
@@ -827,7 +827,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
 
                 if download_response.status_code != 202:
                     logger.error(f"Failed to initiate space download: {download_response.text}")
-                    return False, f"❌ Failed to initiate space download: {download_response.text}"
+                    return False, f"❌ Failed to initiate space download: {download_response.text}", None
 
                 # Get the job ID from the response
                 try:
@@ -835,11 +835,11 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
                     job_id = job_data.get('jobId')
                     if not job_id:
                         logger.error("No job ID received from download request")
-                        return False, "❌ No job ID received from download request"
+                        return False, "❌ No job ID received from download request", None
                     logger.info(f"Successfully received job ID: {job_id}")
                 except Exception as e:
                     logger.error(f"Error parsing download response: {str(e)}")
-                    return False, f"❌ Error parsing download response: {str(e)}"
+                    return False, f"❌ Error parsing download response: {str(e)}", None
 
                 # Return message about download in progress
                 logger.info("Transaction verified and space download initiated successfully")
@@ -847,7 +847,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
                     "✅ Transaction verified successfully!\n\n"
                     "🔄 Space download initiated. This may take a few minutes.\n"
                     "Please wait while we process your request..."
-                )
+                ), job_id
 
                 # Note: The actual job status checking and summarization will be handled in a separate function
                 # that will be called after this response is sent to the user
@@ -855,15 +855,15 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             except Exception as e:
                 logger.error(f"Error processing space: {str(e)}")
                 logger.error(f"Full error traceback: {traceback.format_exc()}")
-                return False, f"❌ Error processing space: {str(e)}"
+                return False, f"❌ Error processing space: {str(e)}", None
             
         logger.info("Transaction verified successfully without space URL")
-        return True, "✅ Transaction verified successfully!"
+        return True, "✅ Transaction verified successfully!", None
         
     except Exception as e:
         logger.error(f"Error checking transaction status: {str(e)}")
         logger.error(f"Full error traceback: {traceback.format_exc()}")
-        return False, f"❌ Error checking transaction status: {str(e)}"
+        return False, f"❌ Error checking transaction status: {str(e)}", None
 
 async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
     """Check the status of a space download job and proceed with summarization if complete.
@@ -896,16 +896,17 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         
         logger.info(f"Job status response status code: {status_response.status_code}")
         logger.debug(f"Job status response headers: {status_response.headers}")
-        logger.debug(f"Job status response body: {status_response.text}")
+        logger.info(f"Job status response body: {status_response.text}")
 
         if status_response.status_code != 200:
             logger.error(f"Failed to check job status. Status code: {status_response.status_code}, Response: {status_response.text}")
             return False, f"❌ Failed to check job status: {status_response.text}"
 
         job_status = status_response.json()
-        status = job_status.get('status')
+        # Access the nested status field from the job object
+        status = job_status.get('job', {}).get('status')
         logger.info(f"Current job status: {status}")
-        logger.debug(f"Full job status data: {json.dumps(job_status, indent=2)}")
+        logger.info(f"Full job status data: {json.dumps(job_status, indent=2)}")
 
         if status == 'completed':
             logger.info("Job completed, proceeding with summarization")
@@ -937,9 +938,25 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                 logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
                 return False, f"❌ Failed to summarize space: {summary_response.text}"
         elif status == 'failed':
-            error_msg = job_status.get('error', 'Unknown error')
+            error_msg = job_status.get('job', {}).get('error', 'Unknown error')
             logger.error(f"Space download failed with error: {error_msg}")
-            return False, f"❌ Space download failed: {error_msg}"
+            
+            # Provide more user-friendly error messages for common issues
+            if "yt-dlp process exited with code 1" in error_msg:
+                return False, (
+                    "❌ Failed to download the Space. This could be due to:\n"
+                    "• The Space URL is invalid or no longer available\n"
+                    "• The Space is private or restricted\n"
+                    "• The Space has been deleted\n"
+                    "• Technical issues with the Space download\n\n"
+                    "Please verify the Space URL and try again."
+                )
+            else:
+                return False, f"❌ Space download failed: {error_msg}"
+        elif status == 'processing':
+            logger.info("Job is still processing, will check again in 60 seconds")
+            await asyncio.sleep(60)  # Wait for 60 seconds
+            return await check_job_status(job_id, space_url)  # Recursive call to check again
         else:
             logger.info(f"Job is still in progress with status: {status}")
             return False, "🔄 Space download is still in progress. Please wait..."
@@ -971,11 +988,26 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         if is_complete:
             logger.info("Job completed successfully, sending summary to user")
             try:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=message,
-                    parse_mode=ParseMode.HTML
-                )
+                # Split long messages into chunks of 4000 characters (Telegram's limit is 4096)
+                message_chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
+                
+                # Send each chunk
+                for i, chunk in enumerate(message_chunks):
+                    if i == 0:
+                        # First chunk updates the original message
+                        await context.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            text=chunk,
+                            parse_mode=ParseMode.HTML
+                        )
+                    else:
+                        # Additional chunks as new messages
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=chunk,
+                            parse_mode=ParseMode.HTML
+                        )
                 logger.info("Successfully sent summary message to user")
                 return True
             except Exception as e:
@@ -986,10 +1018,15 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         # Update the status message
         try:
             logger.debug(f"Updating status message for message_id: {message_id}")
+            # Split long messages into chunks
+            status_message = f"{message}\n\n⏳ Checking again in 60 seconds..."
+            if len(status_message) > 4000:
+                status_message = status_message[:3997] + "..."
+            
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"{message}\n\n⏳ Checking again in 60 seconds...",
+                text=status_message,
                 parse_mode=ParseMode.HTML
             )
             logger.debug("Successfully updated status message")
@@ -1030,9 +1067,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info("Found awaiting_signature flag in user_data")
             command_start_time = context.user_data.get('command_start_time')
             space_url = context.user_data.get('space_url')
-            job_id = context.user_data.get('job_id')
             
-            logger.info(f"Retrieved from user_data - command_start_time: {command_start_time}, space_url: {space_url}, job_id: {job_id}")
+            logger.info(f"Retrieved from user_data - command_start_time: {command_start_time}, space_url: {space_url}")
             
             if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
                 logger.warning("Transaction window expired or no start time found")
@@ -1052,7 +1088,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             signature = message.text.strip()
             logger.info(f"Processing signature: {signature[:20]}...")  # Log first 20 chars of signature
             
-            is_successful, message_text = await check_transaction_status(signature, command_start_time, space_url)
+            is_successful, message_text, job_id = await check_transaction_status(signature, command_start_time, space_url)
             logger.info(f"Transaction check result - is_successful: {is_successful}")
             
             if is_successful:
@@ -1067,7 +1103,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # If we have a job ID, start periodic checking
                 if job_id:
-                    logger.info(f"Found existing job_id: {job_id}, starting periodic check")
+                    logger.info(f"Found job_id: {job_id}, starting periodic check")
+                    # Store the job_id in user_data
+                    context.user_data['job_id'] = job_id
                     # Start the periodic check in the background
                     asyncio.create_task(periodic_job_check(
                         context=context,
@@ -1077,31 +1115,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         message_id=status_message.message_id
                     ))
                 else:
-                    # Extract job ID from the response if it's a download initiation
-                    try:
-                        logger.info(f"No existing job_id, attempting to extract from response: {message.text}")
-                        # The message_text should be a string containing the job ID
-                        if "jobId" in message_text:
-                            # Extract job ID from the message text
-                            job_id = message_text.split("jobId")[1].split(":")[1].strip().strip('"')
-                            logger.info(f"Extracted job_id from response: {job_id}")
-                            context.user_data['job_id'] = job_id
-                            # Start the periodic check in the background
-                            logger.info("Starting periodic check with extracted job_id")
-                            asyncio.create_task(periodic_job_check(
-                                context=context,
-                                job_id=job_id,
-                                space_url=space_url,
-                                chat_id=message.chat_id,
-                                message_id=status_message.message_id
-                            ))
-                        else:
-                            logger.warning("No jobId found in response message")
-                            await message.reply_text(message_text, parse_mode=ParseMode.HTML)
-                    except Exception as e:
-                        logger.error(f"Error processing job data: {str(e)}")
-                        logger.error(f"Response message: {message_text}")
-                        await message.reply_text(message_text, parse_mode=ParseMode.HTML)
+                    logger.warning("No job_id received from transaction check")
+                    await message.reply_text(message_text, parse_mode=ParseMode.HTML)
             else:
                 # Increment failed attempts counter
                 failed_attempts = context.user_data.get('failed_attempts', 0) + 1
