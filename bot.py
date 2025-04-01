@@ -1993,6 +1993,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Filter groups based on grouptype if specified
     if grouptype == "sqrdao":
         filtered_groups = [g for g in all_groups if "sqrdao" in g['title'].lower()]
+    elif grouptype == "summit":
+        filtered_groups = [g for g in all_groups if "summit" in g['title'].lower()]
     else:
         filtered_groups = all_groups
 
@@ -2004,7 +2006,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Send confirmation to the sender
-    group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else ""
+    group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else " (Summit groups only)" if grouptype == "summit" else ""
     await update.message.reply_text(
         f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
         parse_mode=ParseMode.HTML
@@ -2021,8 +2023,14 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for group in filtered_groups:
         try:
             if photo:
+                # Determine announcement format based on grouptype
+                if grouptype in ["sqrdao", "summit"]:
+                    announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
+                else:
+                    announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
+                
                 # Send photo with caption, stripping the command if present
-                formatted_caption = f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
+                formatted_caption = f"{announcement_prefix}\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
                 await context.bot.send_photo(
                     chat_id=group['id'],
                     photo=photo,
@@ -2030,10 +2038,16 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.HTML if formatted_caption else None
                 )
             else:
+                # Determine announcement format based on grouptype
+                if grouptype in ["sqrdao", "summit"]:
+                    announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
+                else:
+                    announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
+                
                 # Send text message without the command
                 await context.bot.send_message(
                     chat_id=group['id'],
-                    text=f"📢 <b>Announcement from sqrDAO/sqrFUND:</b>\n\n{message}",
+                    text=f"{announcement_prefix}\n\n{message}",
                     parse_mode=ParseMode.HTML
                 )
             group_success_count += 1
@@ -2048,6 +2062,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if grouptype == "sqrdao":
         summary += "📝 Message was sent to sqrDAO groups only\n\n"
+    elif grouptype == "summit":
+        summary += "📝 Message was sent to Summit groups only\n\n"
     
     if failed_users:
         summary += f"❌ Failed to send to users:\n"
