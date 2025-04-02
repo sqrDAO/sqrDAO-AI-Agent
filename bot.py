@@ -1122,6 +1122,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # First check if we're awaiting a signature for space summarization
         if context.user_data.get('awaiting_signature'):
+            # Only process summarize_space command status in private chats
+            if message.chat.type != 'private':
+                return
+
             command_start_time = context.user_data.get('command_start_time')
             space_url = context.user_data.get('space_url')
             request_type = context.user_data.get('request_type', 'text')  # Default to 'text' if not set
