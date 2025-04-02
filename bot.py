@@ -901,8 +901,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                 },
                 json={
                     "spacesUrl": space_url,
-                    "promptType": "formatted",
-                    "customPrompt": "Create a concise summary of this Twitter Space focusing only on the main topics discussed."
+                    "promptType": "formatted"
                 }
             )
 
