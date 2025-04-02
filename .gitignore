@@ -38,3 +38,4 @@ bot_memory.db
 *.aac
 *.wma
 *.webm
+temp_audio/
