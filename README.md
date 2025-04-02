@@ -43,7 +43,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - `/balance` - Check $SQR token balance
 - `/sqr_info` - Get information about the $SQR token
 - `/request_member` - Request to become a member
-- `/summarize_space` - Summarize a X (Twitter) Space (requires 1000 $SQR tokens)
+- `/summarize_space` - Summarize a X (Twitter) Space (requires $SQR tokens)
 
 ### Member Commands
 - `/resources` - Access internal resources for sqrDAO Members and sqrFUND Chads
