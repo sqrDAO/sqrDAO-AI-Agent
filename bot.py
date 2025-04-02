@@ -980,6 +980,8 @@ async def text_to_audio(text: str, language: str = 'en') -> Tuple[Optional[str],
 
 def escape_markdown_v2(text):
     """Escape special characters for Telegram's Markdown V2 format."""
+    if text is None:
+        return ""
     chars_to_escape = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', 
                        '-', '=', '|', '{', '}', '.', '!']
     for char in chars_to_escape:
