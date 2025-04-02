@@ -1123,7 +1123,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # First check if we're awaiting a signature for space summarization
         if context.user_data.get('awaiting_signature'):
             # Only process summarize_space command status in private chats
-            if message.chat.type != 'private':
+            if update.message.chat.type != 'private':
+                await update.message.reply_text(
+                    "⚠️ This command is only available in private chats.",
+                    parse_mode=ParseMode.HTML
+                )
                 return
 
             command_start_time = context.user_data.get('command_start_time')
@@ -1321,7 +1325,7 @@ async def set_bot_commands(application):
         ("events", "View sqrDAO events"),
         ("balance", "Check $SQR token balance"),  # Added balance command
         ("sqr_info", "Get information about $SQR token"),
-        ("request_member", "Request to become a sqrDAO member")
+        ("request_member", "Request to become a member")
     ]
     
     # Commands for regular members

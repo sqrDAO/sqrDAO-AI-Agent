@@ -43,7 +43,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - `/balance` - Check $SQR token balance
 - `/sqr_info` - Get information about the $SQR token
 - `/request_member` - Request to become a member
-- `/summarize_space` - Summarize a X (Twitter) Space (requires $SQR tokens)
+- `/summarize_space` - Summarize an X (Twitter) Space (requires $SQR tokens)
 
 ### Member Commands
 - `/resources` - Access internal resources for sqrDAO Members and sqrFUND Chads
@@ -96,7 +96,7 @@ The `/mass_message` command has been updated to:
 
 The `/summarize_space` command allows users to:
 - Submit X (Twitter) Space URLs for summarization
-- Process SQR token transfers (1000 tokens required)
+- Process SQR token transfers
 - Verify transactions within a 30-minute window
 - Track download and summarization progress
 - Receive formatted summaries of Space content
