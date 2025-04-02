@@ -28,3 +28,14 @@ logs/ sqrdao-bot.service
 
 # Database files
 bot_memory.db
+
+# Audio files
+*.mp3
+*.wav
+*.m4a
+*.ogg
+*.flac
+*.aac
+*.wma
+*.webm
+temp_audio/

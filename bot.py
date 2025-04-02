@@ -918,6 +918,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
 
             if summary_response.status_code == 200:
                 summary_data = summary_response.json()
+                # Log the raw response text
+                logger.debug(f"Raw response from summarize-space API: {summary_data}")
                 return True, summary_data.get('summary', '✅ Space summarized successfully!')
             else:
                 logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
@@ -979,13 +981,24 @@ async def text_to_audio(text: str, language: str = 'en') -> Tuple[Optional[str],
         return None, f"Error converting text to audio: {str(e)}"
 
 def escape_markdown_v2(text):
-    """Escape special characters for Telegram's Markdown V2 format."""
+    """Escape special characters for Telegram's Markdown V2 format and handle bold and bullet points."""
     if text is None:
         return ""
-    chars_to_escape = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', 
+    
+    # Handle bold text
+    # Replace *text* with <b>text</b>
+    text = re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
+
+    # Handle bullet points
+    # Replace lines starting with * and ending with a line break
+    text = re.sub(r'^\*\s*(.*)', r'• \1', text, flags=re.MULTILINE)
+
+    # Escape other special characters
+    chars_to_escape = ['_', '[', ']', '(', ')', '~', '`', '>', '#', '+', 
                        '-', '=', '|', '{', '}', '.', '!']
     for char in chars_to_escape:
         text = text.replace(char, '\\' + char)
+    
     return text
 
 async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, space_url: str, chat_id: int, message_id: int, request_type: str = 'text', max_attempts: int = 30):
@@ -1109,6 +1122,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # First check if we're awaiting a signature for space summarization
         if context.user_data.get('awaiting_signature'):
+            # Only process summarize_space command status in private chats
+            if update.message.chat.type != 'private':
+                await update.message.reply_text(
+                    "⚠️ This command is only available in private chats.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
             command_start_time = context.user_data.get('command_start_time')
             space_url = context.user_data.get('space_url')
             request_type = context.user_data.get('request_type', 'text')  # Default to 'text' if not set
@@ -1304,7 +1325,7 @@ async def set_bot_commands(application):
         ("events", "View sqrDAO events"),
         ("balance", "Check $SQR token balance"),  # Added balance command
         ("sqr_info", "Get information about $SQR token"),
-        ("request_member", "Request to become a sqrDAO member")
+        ("request_member", "Request to become a member")
     ]
     
     # Commands for regular members
@@ -2235,10 +2256,10 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Validate the space URL
     space_url = context.args[1]
-    if not space_url.startswith("https://x.com/i/spaces/"):
+    if not space_url.startswith("https://x.com/i/spaces/") and not space_url.startswith("https://twitter.com/i/spaces/"):
         await update.message.reply_text(
             "❌ Invalid X Space URL format.\n"
-            "Please provide a valid URL starting with 'https://x.com/i/spaces/'",
+            "Please provide a valid URL starting with 'https://x.com/i/spaces/' or 'https://twitter.com/i/spaces/'",
             parse_mode=ParseMode.HTML
         )
         return
