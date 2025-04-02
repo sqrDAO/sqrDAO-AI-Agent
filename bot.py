@@ -919,7 +919,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             if summary_response.status_code == 200:
                 summary_data = summary_response.json()
                 # Log the raw response text
-                logger.info(f"Raw response from summarize-space API: {summary_data}")
+                logger.debug(f"Raw response from summarize-space API: {summary_data}")
                 return True, summary_data.get('summary', '✅ Space summarized successfully!')
             else:
                 logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
