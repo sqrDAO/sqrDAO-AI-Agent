@@ -978,6 +978,14 @@ async def text_to_audio(text: str, language: str = 'en') -> Tuple[Optional[str],
         logger.error(f"Full error traceback: {traceback.format_exc()}")
         return None, f"Error converting text to audio: {str(e)}"
 
+def escape_markdown_v2(text):
+    """Escape special characters for Telegram's Markdown V2 format."""
+    chars_to_escape = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', 
+                       '-', '=', '|', '{', '}', '.', '!']
+    for char in chars_to_escape:
+        text = text.replace(char, '\\' + char)
+    return text
+
 async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, space_url: str, chat_id: int, message_id: int, request_type: str = 'text', max_attempts: int = 30):
     """Periodically check job status and update the user.
     
@@ -1057,7 +1065,7 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         # Update the status message
         try:
             # Escape special characters for Markdown V2
-            escaped_message = message.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+            escaped_message = escape_markdown_v2(message)
             
             # Split long messages into chunks
             status_message = f"{escaped_message}\n\n⏳ Checking again in 60 seconds..."
@@ -1082,7 +1090,7 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
     try:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="❌ Timeout: Space processing took too long\\. Please try again later\\.",
+            text=escape_markdown_v2("❌ Timeout: Space processing took too long. Please try again later."),
             parse_mode=ParseMode.MARKDOWN_V2
         )
     except Exception as e:
