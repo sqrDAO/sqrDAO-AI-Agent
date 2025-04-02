@@ -1019,31 +1019,7 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         
         if is_complete:
             try:
-                # Split long messages into chunks of 4000 characters (Telegram's limit is 4096)
-                message_chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
-                
-                # Send each chunk
-                for i, chunk in enumerate(message_chunks):
-                    # Escape special characters for Markdown V2
-                    escaped_chunk = chunk.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
-                    
-                    if i == 0:
-                        # First chunk updates the original message
-                        await context.bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=message_id,
-                            text=escaped_chunk,
-                            parse_mode=ParseMode.MARKDOWN_V2
-                        )
-                    else:
-                        # Additional chunks as new messages
-                        await context.bot.send_message(
-                            chat_id=chat_id,
-                            text=escaped_chunk,
-                            parse_mode=ParseMode.MARKDOWN_V2
-                        )
-                
-                # Generate and send audio version if requested
+                # For audio requests, only generate and send audio
                 if request_type == 'audio':
                     # For audio generation, we need to strip markdown formatting
                     plain_text = message.replace('*', '').replace('_', '').replace('`', '').replace('[', '').replace(']', '')
@@ -1055,10 +1031,18 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                                 await context.bot.send_audio(
                                     chat_id=chat_id,
                                     audio=audio_file,
-                                    caption="🎧 Audio version of the Space summary",
+                                    caption="🎧 Audio summary of the Space",
                                     title="Space Summary",
-                                    performer="sqrDAO AI"
+                                    performer="sqrAI"
                                 )
+                            # Clear the transaction window state after successful audio send
+                            if hasattr(context, 'user_data'):
+                                context.user_data['awaiting_signature'] = False
+                                context.user_data['command_start_time'] = None
+                                context.user_data['space_url'] = None
+                                context.user_data['request_type'] = None
+                                context.user_data['job_id'] = None
+                                context.user_data['failed_attempts'] = 0
                         except Exception as e:
                             logger.error(f"Failed to send audio file: {str(e)}")
                             logger.error(f"Full error traceback: {traceback.format_exc()}")
@@ -1070,6 +1054,40 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                                 logger.error(f"Failed to remove temporary audio file: {str(e)}")
                     elif error:
                         logger.error(f"Failed to generate audio: {error}")
+                else:
+                    # For text requests, send the text summary
+                    # Split long messages into chunks of 4000 characters (Telegram's limit is 4096)
+                    message_chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
+                    
+                    # Send each chunk
+                    for i, chunk in enumerate(message_chunks):
+                        # Escape special characters for Markdown V2
+                        escaped_chunk = chunk.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+                        
+                        if i == 0:
+                            # First chunk updates the original message
+                            await context.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=message_id,
+                                text=escaped_chunk,
+                                parse_mode=ParseMode.MARKDOWN_V2
+                            )
+                        else:
+                            # Additional chunks as new messages
+                            await context.bot.send_message(
+                                chat_id=chat_id,
+                                text=escaped_chunk,
+                                parse_mode=ParseMode.MARKDOWN_V2
+                            )
+                    
+                    # Clear the transaction window state after successful text send
+                    if hasattr(context, 'user_data'):
+                        context.user_data['awaiting_signature'] = False
+                        context.user_data['command_start_time'] = None
+                        context.user_data['space_url'] = None
+                        context.user_data['request_type'] = None
+                        context.user_data['job_id'] = None
+                        context.user_data['failed_attempts'] = 0
                 
                 return True
             except Exception as e:
@@ -2225,7 +2243,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"⚠️ <b>Active Transaction Window</b>\n\n"
                 f"You already have an active transaction window with {minutes}m {seconds}s remaining.\n"
                 f"Please complete the current transaction or wait for the window to expire before starting a new one.\n\n"
-                f"If you need to cancel the current transaction, please contact an administrator.",
+                f"If you need to cancel the current transaction, please contact @DarthCastelian.",
                 parse_mode=ParseMode.HTML
             )
             return
