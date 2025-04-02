@@ -966,8 +966,11 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         
         # Update the status message
         try:
+            # Sanitize the message by removing any HTML tags and escaping special characters
+            sanitized_message = message.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            
             # Split long messages into chunks
-            status_message = f"{message}\n\n⏳ Checking again in 60 seconds..."
+            status_message = f"{sanitized_message}\n\n⏳ Checking again in 60 seconds..."
             if len(status_message) > 4000:
                 status_message = status_message[:3997] + "..."
             
