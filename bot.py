@@ -1001,20 +1001,23 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                 
                 # Send each chunk
                 for i, chunk in enumerate(message_chunks):
+                    # Escape special characters for Markdown V2
+                    escaped_chunk = chunk.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+                    
                     if i == 0:
                         # First chunk updates the original message
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=message_id,
-                            text=chunk,
-                            parse_mode=ParseMode.MARKDOWN_V2  # Changed to MARKDOWN_V2 for better formatting support
+                            text=escaped_chunk,
+                            parse_mode=ParseMode.MARKDOWN_V2
                         )
                     else:
                         # Additional chunks as new messages
                         await context.bot.send_message(
                             chat_id=chat_id,
-                            text=chunk,
-                            parse_mode=ParseMode.MARKDOWN_V2  # Changed to MARKDOWN_V2 for better formatting support
+                            text=escaped_chunk,
+                            parse_mode=ParseMode.MARKDOWN_V2
                         )
                 
                 # Generate and send audio version if requested
@@ -1053,15 +1056,11 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         
         # Update the status message
         try:
-            # Sanitize the message for Telegram's markdown formatting
-            # Escape special characters that need escaping in markdown
-            special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-            sanitized_message = message
-            for char in special_chars:
-                sanitized_message = sanitized_message.replace(char, f'\\{char}')
+            # Escape special characters for Markdown V2
+            escaped_message = message.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
             
             # Split long messages into chunks
-            status_message = f"{sanitized_message}\n\n⏳ Checking again in 60 seconds..."
+            status_message = f"{escaped_message}\n\n⏳ Checking again in 60 seconds..."
             if len(status_message) > 4000:
                 status_message = status_message[:3997] + "..."
             
@@ -1069,7 +1068,7 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                 chat_id=chat_id,
                 message_id=message_id,
                 text=status_message,
-                parse_mode=ParseMode.MARKDOWN_V2  # Changed to MARKDOWN_V2 for better formatting support
+                parse_mode=ParseMode.MARKDOWN_V2
             )
         except Exception as e:
             logger.error(f"Error updating status message: {str(e)}")
@@ -1083,8 +1082,8 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
     try:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="❌ Timeout: Space processing took too long. Please try again later.",
-            parse_mode=ParseMode.MARKDOWN_V2  # Changed to MARKDOWN_V2 for better formatting support
+            text="❌ Timeout: Space processing took too long\\. Please try again later\\.",
+            parse_mode=ParseMode.MARKDOWN_V2
         )
     except Exception as e:
         logger.error(f"Failed to send timeout message: {str(e)}")
