@@ -901,7 +901,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                 },
                 json={
                     "spacesUrl": space_url,
-                    "promptType": "formatted"
+                    "promptType": "formatted",
+                    "customPrompt": "Create a concise summary of this Twitter Space focusing only on the main topics discussed."
                 }
             )
 
@@ -918,6 +919,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
 
             if summary_response.status_code == 200:
                 summary_data = summary_response.json()
+                # Log the raw response text
+                logger.info(f"Raw response from summarize-space API: {summary_data}")
                 return True, summary_data.get('summary', '✅ Space summarized successfully!')
             else:
                 logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
@@ -979,13 +982,24 @@ async def text_to_audio(text: str, language: str = 'en') -> Tuple[Optional[str],
         return None, f"Error converting text to audio: {str(e)}"
 
 def escape_markdown_v2(text):
-    """Escape special characters for Telegram's Markdown V2 format."""
+    """Escape special characters for Telegram's Markdown V2 format and handle bold and bullet points."""
     if text is None:
         return ""
-    chars_to_escape = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', 
+    
+    # Handle bold text
+    # Replace *text* with <b>text</b>
+    text = re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
+
+    # Handle bullet points
+    # Replace lines starting with * and ending with a line break
+    text = re.sub(r'^\*\s*(.*)', r'• \1', text, flags=re.MULTILINE)
+
+    # Escape other special characters
+    chars_to_escape = ['_', '[', ']', '(', ')', '~', '`', '>', '#', '+', 
                        '-', '=', '|', '{', '}', '.', '!']
     for char in chars_to_escape:
         text = text.replace(char, '\\' + char)
+    
     return text
 
 async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, space_url: str, chat_id: int, message_id: int, request_type: str = 'text', max_attempts: int = 30):
