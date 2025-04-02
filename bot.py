@@ -31,7 +31,6 @@ from telegram.ext import ChatMemberHandler
 from solders.signature import Signature
 import asyncio
 from gtts import gTTS
-import tempfile
 import uuid
 
 # SNS resolution function
