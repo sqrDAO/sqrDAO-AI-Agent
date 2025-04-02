@@ -30,6 +30,8 @@ from solders.keypair import Keypair
 from telegram.ext import ChatMemberHandler
 from solders.signature import Signature
 import asyncio
+from gtts import gTTS
+import uuid
 
 # SNS resolution function
 async def resolve_sns_domain(domain: str) -> str:
@@ -673,13 +675,14 @@ def process_message_with_context(message, context):
         logger.error(f"Error generating response: {str(e)}")
         return "I encountered an error while processing your message. Please try again."
 
-async def check_transaction_status(signature: str, command_start_time: datetime, space_url: str = None) -> Tuple[bool, str, Optional[str]]:
+async def check_transaction_status(signature: str, command_start_time: datetime, space_url: str = None, request_type: str = 'text') -> Tuple[bool, str, Optional[str]]:
     """Check if a Solana transaction was successful, completed within the deadline, and has correct amount.
     
     Args:
         signature (str): The transaction signature to check
         command_start_time (datetime): When the command was initiated
         space_url (str): The Twitter Space URL to summarize
+        request_type (str): The type of request ('text' or 'audio')
         
     Returns:
         Tuple[bool, str, Optional[str]]: (True if all checks pass, error message if any check fails, job_id if space download was initiated)
@@ -770,13 +773,16 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
                         transfer_amount = post_amount - pre_amount
                         break
             
+            # Set required amount based on request type
+            required_amount = 2000 if request_type == 'audio' else 1000
+            
             if transfer_amount <= 0:
                 logger.warning(f"Invalid transfer amount: {transfer_amount}")
-                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: 1000)", None
+                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: {required_amount})", None
                 
-            if transfer_amount < 1000:
+            if transfer_amount < required_amount:
                 logger.warning(f"Insufficient transfer amount: {transfer_amount}")
-                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: 1000)", None
+                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: {required_amount})", None
                 
         except Exception as e:
             logger.error(f"Error checking token amount: {str(e)}")
@@ -864,6 +870,17 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             }
         )
 
+        if status_response.status_code == 502:
+            logger.error("Received 502 Server Error from API")
+            return False, (
+                "⚠️ <b>Service Temporarily Unavailable</b>\n\n"
+                "We're experiencing high demand or temporary service issues.\n"
+                "Please wait a few minutes and try again.\n\n"
+                "If the issue persists, you can:\n"
+                "• Try again later\n"
+                "• Contact support at dev@sqrfund.ai"
+            )
+
         if status_response.status_code != 200:
             logger.error(f"Failed to check job status. Status code: {status_response.status_code}, Response: {status_response.text}")
             return False, f"❌ Failed to check job status: {status_response.text}"
@@ -887,6 +904,17 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                     "promptType": "formatted"
                 }
             )
+
+            if summary_response.status_code == 502:
+                logger.error("Received 502 Server Error during summarization")
+                return False, (
+                    "⚠️ <b>Summarization Service Temporarily Unavailable</b>\n\n"
+                    "We're experiencing high demand or temporary service issues.\n"
+                    "Please wait a few minutes and try again.\n\n"
+                    "If the issue persists, you can:\n"
+                    "• Try again later\n"
+                    "• Contact support at dev@sqrfund.ai"
+                )
 
             if summary_response.status_code == 200:
                 summary_data = summary_response.json()
@@ -921,7 +949,36 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         logger.error(f"Full error traceback: {traceback.format_exc()}")
         return False, f"❌ Error checking job status: {str(e)}"
 
-async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, space_url: str, chat_id: int, message_id: int, max_attempts: int = 30):
+async def text_to_audio(text: str, language: str = 'en') -> Tuple[Optional[str], Optional[str]]:
+    """Convert text to audio using Google Text-to-Speech.
+    
+    Args:
+        text (str): The text to convert to audio
+        language (str): The language code (default: 'en' for English)
+        
+    Returns:
+        Tuple[Optional[str], Optional[str]]: (audio file path, error message if any)
+    """
+    try:
+        # Create a temporary directory if it doesn't exist
+        temp_dir = os.path.join(os.getcwd(), 'temp_audio')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Generate a unique filename
+        filename = f"space_summary_{uuid.uuid4()}.mp3"
+        filepath = os.path.join(temp_dir, filename)
+        
+        # Convert text to speech
+        tts = gTTS(text=text, lang=language, slow=False)
+        tts.save(filepath)
+        
+        return filepath, None
+    except Exception as e:
+        logger.error(f"Error converting text to audio: {str(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
+        return None, f"Error converting text to audio: {str(e)}"
+
+async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, space_url: str, chat_id: int, message_id: int, request_type: str = 'text', max_attempts: int = 30):
     """Periodically check job status and update the user.
     
     Args:
@@ -930,6 +987,7 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         space_url: The Twitter Space URL to summarize
         chat_id: The chat ID to send updates to
         message_id: The message ID to update
+        request_type: The type of request ('text' or 'audio')
         max_attempts: Maximum number of attempts (default 30 = 5 minutes)
     """
     attempt = 0
@@ -949,15 +1007,44 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                             chat_id=chat_id,
                             message_id=message_id,
                             text=chunk,
-                            parse_mode=ParseMode.HTML
+                            parse_mode=ParseMode.MARKDOWN_V2  # Changed to MARKDOWN_V2 for better formatting support
                         )
                     else:
                         # Additional chunks as new messages
                         await context.bot.send_message(
                             chat_id=chat_id,
                             text=chunk,
-                            parse_mode=ParseMode.HTML
+                            parse_mode=ParseMode.MARKDOWN_V2  # Changed to MARKDOWN_V2 for better formatting support
                         )
+                
+                # Generate and send audio version if requested
+                if request_type == 'audio':
+                    # For audio generation, we need to strip markdown formatting
+                    plain_text = message.replace('*', '').replace('_', '').replace('`', '').replace('[', '').replace(']', '')
+                    audio_filepath, error = await text_to_audio(plain_text)
+                    if audio_filepath and not error:
+                        try:
+                            # Send the audio file
+                            with open(audio_filepath, 'rb') as audio_file:
+                                await context.bot.send_audio(
+                                    chat_id=chat_id,
+                                    audio=audio_file,
+                                    caption="🎧 Audio version of the Space summary",
+                                    title="Space Summary",
+                                    performer="sqrDAO AI"
+                                )
+                        except Exception as e:
+                            logger.error(f"Failed to send audio file: {str(e)}")
+                            logger.error(f"Full error traceback: {traceback.format_exc()}")
+                        finally:
+                            # Clean up the temporary file
+                            try:
+                                os.remove(audio_filepath)
+                            except Exception as e:
+                                logger.error(f"Failed to remove temporary audio file: {str(e)}")
+                    elif error:
+                        logger.error(f"Failed to generate audio: {error}")
+                
                 return True
             except Exception as e:
                 logger.error(f"Failed to send summary message: {str(e)}")
@@ -966,8 +1053,12 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         
         # Update the status message
         try:
-            # Sanitize the message by removing any HTML tags and escaping special characters
-            sanitized_message = message.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            # Sanitize the message for Telegram's markdown formatting
+            # Escape special characters that need escaping in markdown
+            special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+            sanitized_message = message
+            for char in special_chars:
+                sanitized_message = sanitized_message.replace(char, f'\\{char}')
             
             # Split long messages into chunks
             status_message = f"{sanitized_message}\n\n⏳ Checking again in 60 seconds..."
@@ -978,7 +1069,7 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                 chat_id=chat_id,
                 message_id=message_id,
                 text=status_message,
-                parse_mode=ParseMode.HTML
+                parse_mode=ParseMode.MARKDOWN_V2  # Changed to MARKDOWN_V2 for better formatting support
             )
         except Exception as e:
             logger.error(f"Error updating status message: {str(e)}")
@@ -993,7 +1084,7 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         await context.bot.send_message(
             chat_id=chat_id,
             text="❌ Timeout: Space processing took too long. Please try again later.",
-            parse_mode=ParseMode.HTML
+            parse_mode=ParseMode.MARKDOWN_V2  # Changed to MARKDOWN_V2 for better formatting support
         )
     except Exception as e:
         logger.error(f"Failed to send timeout message: {str(e)}")
@@ -1011,6 +1102,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get('awaiting_signature'):
             command_start_time = context.user_data.get('command_start_time')
             space_url = context.user_data.get('space_url')
+            request_type = context.user_data.get('request_type', 'text')  # Default to 'text' if not set
             
             if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
                 await message.reply_text(
@@ -1022,13 +1114,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data['awaiting_signature'] = False
                 context.user_data['command_start_time'] = None
                 context.user_data['space_url'] = None
+                context.user_data['request_type'] = None
                 context.user_data['job_id'] = None
                 context.user_data['failed_attempts'] = 0
                 return
 
             signature = message.text.strip()
             
-            is_successful, message_text, job_id = await check_transaction_status(signature, command_start_time, space_url)
+            is_successful, message_text, job_id = await check_transaction_status(signature, command_start_time, space_url, request_type)
             
             if is_successful:
                 # Send initial status message
@@ -1048,7 +1141,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         job_id=job_id,
                         space_url=space_url,
                         chat_id=message.chat_id,
-                        message_id=status_message.message_id
+                        message_id=status_message.message_id,
+                        request_type=request_type
                     ))
                 else:
                     await message.reply_text(message_text, parse_mode=ParseMode.HTML)
@@ -1066,14 +1160,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     context.user_data['awaiting_signature'] = False
                     context.user_data['command_start_time'] = None
                     context.user_data['space_url'] = None
+                    context.user_data['request_type'] = None
                     context.user_data['job_id'] = None
                     context.user_data['failed_attempts'] = 0
                 else:
                     remaining_attempts = 3 - failed_attempts
+                    required_amount = 2000 if request_type == 'audio' else 1000
                     await message.reply_text(
                         f"{message_text}\n\n"
                         f"Please ensure you:\n"
-                        f"1. Send exactly 1000 $SQR tokens\n"
+                        f"1. Send exactly {required_amount} $SQR tokens\n"
                         f"2. Complete the transaction within 30 minutes\n"
                         f"3. Send the correct transaction signature\n\n"
                         f"⚠️ You have {remaining_attempts} attempt{'s' if remaining_attempts > 1 else ''} remaining.",
@@ -2104,18 +2200,32 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-    # Check if a space URL was provided
-    if not context.args:
+    # Check if both request type and space URL were provided
+    if len(context.args) < 2:
         await update.message.reply_text(
-            "❌ Please provide a X Space URL.\n"
-            "Usage: /summarize_space [space_url]\n"
-            "Example: /summarize_space https://x.com/i/spaces/1234567890",
+            "❌ Please provide both request type and X Space URL.\n"
+            "Usage: /summarize_space [request_type] [space_url]\n"
+            "Request types:\n"
+            "• text - Get text summary (1000 $SQR)\n"
+            "• audio - Get text + audio summary (2000 $SQR)\n"
+            "Example: /summarize_space text https://x.com/i/spaces/1234567890",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Validate request type
+    request_type = context.args[0].lower()
+    if request_type not in ['text', 'audio']:
+        await update.message.reply_text(
+            "❌ Invalid request type.\n"
+            "Please use either 'text' or 'audio'.\n"
+            "Example: /summarize_space text https://x.com/i/spaces/1234567890",
             parse_mode=ParseMode.HTML
         )
         return
 
     # Validate the space URL
-    space_url = context.args[0]
+    space_url = context.args[1]
     if not space_url.startswith("https://x.com/i/spaces/"):
         await update.message.reply_text(
             "❌ Invalid X Space URL format.\n"
@@ -2124,16 +2234,22 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Store the user's state in context with timestamp and space URL
+    # Store the user's state in context with timestamp, space URL, and request type
     context.user_data['awaiting_signature'] = True
     context.user_data['command_start_time'] = datetime.now()
     context.user_data['space_url'] = space_url
+    context.user_data['request_type'] = request_type
+    
+    # Set required token amount based on request type
+    required_amount = 2000 if request_type == 'audio' else 1000
     
     # Send instructions to the user
     instructions = (
         "🔄 <b>Space Summarization Process</b>\n\n"
+        f"Request Type: <b>{request_type.upper()}</b>\n"
+        f"Required Amount: <b>{required_amount} $SQR</b>\n\n"
         "To proceed with space summarization, please follow these steps:\n\n"
-        "1. Send 1000 $SQR tokens to this address:\n"
+        "1. Send the required $SQR tokens to this address:\n"
         "<code>Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7</code>\n\n"
         "2. Copy the transaction signature\n"
         "3. Paste the signature in this chat\n\n"
