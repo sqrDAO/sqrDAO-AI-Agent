@@ -1037,46 +1037,46 @@ async def generate_audio_and_notify(context, chat_id, message):
     # Remove remaining special characters that might affect speech synthesis
     plain_text = re.sub(r'[^\w\s.,?!;:()\-"\']+', ' ', plain_text)
     
-    # Check text length before generating audio
-    if len(plain_text) > 10000:  # Adjust limit as needed
-        logger.warning(f"Text too long for audio generation: {len(plain_text)} characters")
+    # Define a reasonable chunk size for audio files
+    max_chunk_size = 10000
+    if len(plain_text) > max_chunk_size:
+        logger.warning(f"Text split into multiple parts for audio generation: {len(plain_text)} characters")
         await context.bot.send_message(
             chat_id=chat_id,
-            text="❌ Text too long for audio conversion. Only the first part will be converted.",
+            text=f"ℹ️ Text is quite long and will be split into {(len(plain_text) // max_chunk_size) + 1} audio files.",
             parse_mode=ParseMode.HTML
         )
-        plain_text = plain_text[:10000] + "... [Text truncated due to length]"
-    
-    audio_filepath, error = await text_to_audio(plain_text)
-    
-    if audio_filepath and not error:
-        try:
-            # Send the audio file
-            with open(audio_filepath, 'rb') as audio_file:
-                await context.bot.send_audio(
-                    chat_id=chat_id,
-                    audio=audio_file,
-                    caption="🎧 Audio version of the Space summary",
-                    title="Space Summary",
-                    performer="sqrAI"
-                )
-        except Exception as e:
-            logger.error(f"Failed to send audio file: {str(e)}")
-            logger.error(f"Full error traceback: {traceback.format_exc()}")
-        finally:
-            # Clean up the temporary file
-            try:
-                os.remove(audio_filepath)
-                logger.info("Cleaned up temporary audio file")
-            except Exception as e:
-                logger.error(f"Failed to remove temporary audio file: {str(e)}")
-    elif error:
-        logger.error(f"Failed to generate audio: {error}")
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="❌ Failed to generate audio version. Please try again later.",
-            parse_mode=ParseMode.HTML
-        )
+     
+        # Split text into chunks and generate audio for each
+        text_chunks = [plain_text[i:i+max_chunk_size] for i in range(0, len(plain_text), max_chunk_size)]
+        for i, chunk in enumerate(text_chunks):
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🎧 Generating audio part {i+1}/{len(text_chunks)}...",
+                parse_mode=ParseMode.HTML
+            )
+            audio_filepath, error = await text_to_audio(chunk)
+         
+            if audio_filepath and not error:
+                try:
+                    with open(audio_filepath, 'rb') as audio_file:
+                        await context.bot.send_audio(
+                            chat_id=chat_id,
+                            audio=audio_file,
+                            caption=f"🎧 Audio part {i+1}/{len(text_chunks)} of the Space summary",
+                            title=f"Space Summary Part {i+1}",
+                            performer="sqrAI"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to send audio file: {str(e)}")
+                    logger.error(f"Full error traceback: {traceback.format_exc()}")
+                finally:
+                    try:
+                        os.remove(audio_filepath)
+                        logger.info("Cleaned up temporary audio file")
+                    except Exception as e:
+                        logger.error(f"Failed to remove temporary audio file: {str(e)}")
+        return
 
 async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, space_url: str, chat_id: int, message_id: int, request_type: str = 'text', max_attempts: int = 30):
     """Periodically check job status and update the user.
