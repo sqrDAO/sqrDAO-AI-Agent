@@ -1028,11 +1028,18 @@ async def generate_and_send_audio(context, chat_id, message, request_type):
             parse_mode=ParseMode.HTML
         )
         
-        # Start audio generation in background with error handling
-        task = asyncio.create_task(generate_audio_and_notify(context, chat_id, message))
-        
-        # Add error handling
-        task.add_done_callback(lambda t: logger.error(f"Audio generation task failed: {t.exception()}") if t.exception() else logger.info("Audio generation completed successfully."))
+        # Add timeout to prevent indefinite waiting
+        try:
+            task = asyncio.create_task(generate_audio_and_notify(context, chat_id, message))
+            # Set a reasonable timeout (e.g., 10 minutes)
+            await asyncio.wait_for(task, timeout=600)
+        except asyncio.TimeoutError:
+            logger.error("Audio generation timed out after 10 minutes")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="⚠️ Audio generation is taking longer than expected. You'll receive it when ready.",
+                parse_mode=ParseMode.HTML
+            )
 
 async def generate_audio_and_notify(context, chat_id, message):
     # More robust markdown/formatting removal
