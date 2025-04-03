@@ -2321,7 +2321,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"⚠️ <b>Active Transaction Window</b>\n\n"
                 f"You already have an active transaction window with {minutes}m {seconds}s remaining.\n"
                 f"Please complete the current transaction or wait for the window to expire before starting a new one.\n\n"
-                f"If you need to cancel the current transaction, please contact an administrator.",
+                f"If you need to cancel the current transaction, use the /cancel command.",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -2396,7 +2396,8 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['failed_attempts'] = 0
         
         await update.message.reply_text(
-            "✅ Your current transaction has been cancelled.",
+            "✅ Your current transaction has been cancelled.\n\n"
+            "For refund, please contact @DarthCastelian.",
             parse_mode=ParseMode.HTML
         )
     else:
