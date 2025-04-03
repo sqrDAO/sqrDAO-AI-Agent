@@ -1020,6 +1020,51 @@ def escape_markdown_v2(text):
     
     return text
 
+async def generate_and_send_audio(context, chat_id, message, request_type):
+    if request_type == 'audio':
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="🎧 Audio version is being generated and will be sent shortly...",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Start audio generation in background
+        asyncio.create_task(generate_audio_and_notify(context, chat_id, message))
+
+async def generate_audio_and_notify(context, chat_id, message):
+    # Strip markdown formatting
+    plain_text = message.replace('*', '').replace('_', '').replace('`', '').replace('[', '').replace(']', '')
+    audio_filepath, error = await text_to_audio(plain_text)
+    
+    if audio_filepath and not error:
+        try:
+            # Send the audio file
+            with open(audio_filepath, 'rb') as audio_file:
+                await context.bot.send_audio(
+                    chat_id=chat_id,
+                    audio=audio_file,
+                    caption="🎧 Audio version of the Space summary",
+                    title="Space Summary",
+                    performer="sqrDAO AI"
+                )
+        except Exception as e:
+            logger.error(f"Failed to send audio file: {str(e)}")
+            logger.error(f"Full error traceback: {traceback.format_exc()}")
+        finally:
+            # Clean up the temporary file
+            try:
+                os.remove(audio_filepath)
+                logger.info("Cleaned up temporary audio file")
+            except Exception as e:
+                logger.error(f"Failed to remove temporary audio file: {str(e)}")
+    elif error:
+        logger.error(f"Failed to generate audio: {error}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ Failed to generate audio version. Please try again later.",
+            parse_mode=ParseMode.HTML
+        )
+
 async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, space_url: str, chat_id: int, message_id: int, request_type: str = 'text', max_attempts: int = 30):
     """Periodically check job status and update the user.
     
@@ -1066,39 +1111,13 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                         await context.bot.send_message(
                             chat_id=chat_id,
                             text=escaped_chunk,
-                            parse_mode=ParseMode.MARKDOWN_V2
+                            parse_mode=ParseMode.MARKDOWN_V2,
+                            reply_to_message_id=message_id  # Link to the original message
                         )
                 
-                # Generate and send audio version if requested
+                # Start audio generation in background if requested
                 if request_type == 'audio':
-                    logger.info("Generating audio version of the summary")
-                    # For audio generation, we need to strip markdown formatting
-                    plain_text = message.replace('*', '').replace('_', '').replace('`', '').replace('[', '').replace(']', '')
-                    audio_filepath, error = await text_to_audio(plain_text)
-                    if audio_filepath and not error:
-                        try:
-                            logger.info("Sending audio file")
-                            # Send the audio file
-                            with open(audio_filepath, 'rb') as audio_file:
-                                await context.bot.send_audio(
-                                    chat_id=chat_id,
-                                    audio=audio_file,
-                                    caption="🎧 Audio version of the Space summary",
-                                    title="Space Summary",
-                                    performer="sqrDAO AI"
-                                )
-                        except Exception as e:
-                            logger.error(f"Failed to send audio file: {str(e)}")
-                            logger.error(f"Full error traceback: {traceback.format_exc()}")
-                        finally:
-                            # Clean up the temporary file
-                            try:
-                                os.remove(audio_filepath)
-                                logger.info("Cleaned up temporary audio file")
-                            except Exception as e:
-                                logger.error(f"Failed to remove temporary audio file: {str(e)}")
-                    elif error:
-                        logger.error(f"Failed to generate audio: {error}")
+                    await generate_and_send_audio(context, chat_id, message, request_type)
                 
                 logger.info("Successfully completed periodic job check")
                 return True
@@ -2292,7 +2311,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not space_url.startswith("https://x.com/i/spaces/") and not space_url.startswith("https://x.com/i/broadcasts/"):
         await update.message.reply_text(
             "❌ Invalid X Space URL format.\n"
-            "Please provide a valid URL starting with 'https://x.com/i/spaces/' or 'https://twitter.com/i/broadcasts/'",
+            "Please provide a valid URL starting with 'https://x.com/i/spaces/' or 'https://x.com/i/broadcasts/'",
             parse_mode=ParseMode.HTML
         )
         return
