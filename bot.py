@@ -1028,8 +1028,11 @@ async def generate_and_send_audio(context, chat_id, message, request_type):
             parse_mode=ParseMode.HTML
         )
         
-        # Start audio generation in background
-        asyncio.create_task(generate_audio_and_notify(context, chat_id, message))
+        # Start audio generation in background with error handling
+        task = asyncio.create_task(generate_audio_and_notify(context, chat_id, message))
+        
+        # Add error handling
+        task.add_done_callback(lambda t: logger.error(f"Audio generation task failed: {t.exception()}") if t.exception() else logger.info("Audio generation completed successfully."))
 
 async def generate_audio_and_notify(context, chat_id, message):
     # More robust markdown/formatting removal
