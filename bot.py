@@ -573,6 +573,15 @@ def search_web(query, num_results=5):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
+    
+    # Reset user data when /start is issued
+    context.user_data['awaiting_signature'] = False
+    context.user_data['command_start_time'] = None
+    context.user_data['space_url'] = None
+    context.user_data['request_type'] = None
+    context.user_data['job_id'] = None
+    context.user_data['failed_attempts'] = 0
+
     welcome_message = (
         "👋 <b>Hello!</b> I'm your AI assistant powered by Gemini, developed by sqrFUND. "
         "You can ask me anything, and I'll do my best to help you!\n\n"
@@ -855,6 +864,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         Tuple[bool, str]: (True if job is complete and summary is ready, error message if any step fails)
     """
     try:
+        logger.info(f"Checking job status for job_id: {job_id}")
         api_key = os.getenv('SQR_FUND_API_KEY')
         if not api_key:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
@@ -863,6 +873,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         # Check job status
         status_url = f"https://spaces.sqrfund.ai/api/jobs/{job_id}"
         
+        logger.info(f"Sending request to check job status at {status_url}")
         status_response = requests.get(
             status_url,
             headers={
@@ -870,6 +881,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             }
         )
 
+        logger.info(f"Received response with status code: {status_response.status_code}")
+        
         if status_response.status_code == 502:
             logger.error("Received 502 Server Error from API")
             return False, (
@@ -886,10 +899,13 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             return False, f"❌ Failed to check job status: {status_response.text}"
 
         job_status = status_response.json()
+        logger.info(f"Job status response: {job_status}")
+        
         # Access the nested status field from the job object
         status = job_status.get('job', {}).get('status')
 
         if status == 'completed':
+            logger.info("Job completed successfully, proceeding with summarization")
             # Proceed with summarization
             summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
             
@@ -905,6 +921,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                 }
             )
 
+            logger.info(f"Received response for summarization request: {summary_response.status_code}")
+            
             if summary_response.status_code == 502:
                 logger.error("Received 502 Server Error during summarization")
                 return False, (
@@ -918,8 +936,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
 
             if summary_response.status_code == 200:
                 summary_data = summary_response.json()
-                # Log the raw response text
-                logger.debug(f"Raw response from summarize-space API: {summary_data}")
+                logger.info(f"Summarization response: {summary_data}")
                 return True, summary_data.get('summary', '✅ Space summarized successfully!')
             else:
                 logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
@@ -941,9 +958,11 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             else:
                 return False, f"❌ Space download failed: {error_msg}"
         elif status == 'processing':
-            await asyncio.sleep(60)  # Wait for 60 seconds
+            logger.info("Job is still processing, will check again later")
+            await asyncio.sleep(180)  # Wait for 180 seconds
             return await check_job_status(job_id, space_url)  # Recursive call to check again
         else:
+            logger.warning(f"Unexpected job status: {status}")
             return False, "🔄 Space download is still in progress. Please wait..."
 
     except Exception as e:
@@ -1013,22 +1032,28 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         request_type: The type of request ('text' or 'audio')
         max_attempts: Maximum number of attempts (default 30 = 5 minutes)
     """
+    logger.info(f"Starting periodic job check for job_id: {job_id}, space_url: {space_url}, request_type: {request_type}")
     attempt = 0
     while attempt < max_attempts:
+        logger.info(f"Checking job status - Attempt {attempt + 1}/{max_attempts}")
         is_complete, message = await check_job_status(job_id, space_url)
         
         if is_complete:
+            logger.info("Job completed successfully, preparing to send response")
             try:
                 # Split long messages into chunks of 4000 characters (Telegram's limit is 4096)
                 message_chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
+                logger.info(f"Split message into {len(message_chunks)} chunks")
                 
                 # Send each chunk
                 for i, chunk in enumerate(message_chunks):
+                    logger.info(f"Sending chunk {i + 1}/{len(message_chunks)}")
                     # Escape special characters for Markdown V2
                     escaped_chunk = chunk.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
                     
                     if i == 0:
                         # First chunk updates the original message
+                        logger.info("Updating original message with first chunk")
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=message_id,
@@ -1037,6 +1062,7 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                         )
                     else:
                         # Additional chunks as new messages
+                        logger.info("Sending additional chunk as new message")
                         await context.bot.send_message(
                             chat_id=chat_id,
                             text=escaped_chunk,
@@ -1045,11 +1071,13 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                 
                 # Generate and send audio version if requested
                 if request_type == 'audio':
+                    logger.info("Generating audio version of the summary")
                     # For audio generation, we need to strip markdown formatting
                     plain_text = message.replace('*', '').replace('_', '').replace('`', '').replace('[', '').replace(']', '')
                     audio_filepath, error = await text_to_audio(plain_text)
                     if audio_filepath and not error:
                         try:
+                            logger.info("Sending audio file")
                             # Send the audio file
                             with open(audio_filepath, 'rb') as audio_file:
                                 await context.bot.send_audio(
@@ -1066,11 +1094,13 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                             # Clean up the temporary file
                             try:
                                 os.remove(audio_filepath)
+                                logger.info("Cleaned up temporary audio file")
                             except Exception as e:
                                 logger.error(f"Failed to remove temporary audio file: {str(e)}")
                     elif error:
                         logger.error(f"Failed to generate audio: {error}")
                 
+                logger.info("Successfully completed periodic job check")
                 return True
             except Exception as e:
                 logger.error(f"Failed to send summary message: {str(e)}")
@@ -1079,11 +1109,12 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         
         # Update the status message
         try:
+            logger.info(f"Updating status message: {message}")
             # Escape special characters for Markdown V2
             escaped_message = escape_markdown_v2(message)
             
             # Split long messages into chunks
-            status_message = f"{escaped_message}\n\n⏳ Checking again in 60 seconds..."
+            status_message = f"{escaped_message}\n\n⏳ Checking again in 180 seconds..."
             if len(status_message) > 4000:
                 status_message = status_message[:3997] + "..."
             
@@ -1097,11 +1128,13 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
             logger.error(f"Error updating status message: {str(e)}")
             logger.error(f"Full error traceback: {traceback.format_exc()}")
         
-        # Wait for 60 seconds before next check
-        await asyncio.sleep(60)
+        # Wait for 180 seconds before next check
+        logger.info("Waiting 180 seconds before next check")
+        await asyncio.sleep(180)
         attempt += 1
     
     # If we've reached max attempts, send a timeout message
+    logger.warning(f"Reached maximum attempts ({max_attempts}) without completion")
     try:
         await context.bot.send_message(
             chat_id=chat_id,
