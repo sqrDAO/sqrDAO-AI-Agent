@@ -2376,10 +2376,12 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Required Amount: <b>{required_amount} $SQR</b>\n\n"
         "To proceed with space summarization, please follow these steps:\n\n"
         "1. Send the required $SQR tokens to this address:\n"
-        "<code>Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7</code>\n\n"
+        "<code>Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7</code>\n"
+        "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n"
         "2. Copy the transaction signature\n"
         "3. Paste the signature in this chat\n\n"
         "⚠️ <i>Note: The transaction must be completed within 30 minutes from now.</i>\n"
+        "If you need to cancel the current transaction, use the /cancel command."
         "⏰ Deadline: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
     )
     
