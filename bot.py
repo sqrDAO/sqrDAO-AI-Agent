@@ -2374,14 +2374,14 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔄 <b>Space Summarization Process</b>\n\n"
         f"Request Type: <b>{request_type.upper()}</b>\n"
         f"Required Amount: <b>{required_amount} $SQR</b>\n\n"
+        "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n\n"
         "To proceed with space summarization, please follow these steps:\n\n"
         "1. Send the required $SQR tokens to this address:\n"
         "<code>Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7</code>\n"
-        "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n"
         "2. Copy the transaction signature\n"
         "3. Paste the signature in this chat\n\n"
         "⚠️ <i>Note: The transaction must be completed within 30 minutes from now.</i>\n"
-        "If you need to cancel the current transaction, use the /cancel command."
+        "If you need to cancel the current transaction, use the /cancel command.\n\n"
         "⏰ Deadline: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
     )
     
@@ -2399,7 +2399,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(
             "✅ Your current transaction has been cancelled.\n\n"
-            "For refund, please contact @DarthCastelian.",
+            "For refund (if any), please contact @DarthCastelian.",
             parse_mode=ParseMode.HTML
         )
     else:
