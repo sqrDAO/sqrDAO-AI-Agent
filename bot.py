@@ -2385,6 +2385,26 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(instructions, parse_mode=ParseMode.HTML)
 
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /cancel command - Cancel the current transaction."""
+    if context.user_data.get('awaiting_signature'):
+        context.user_data['awaiting_signature'] = False
+        context.user_data['command_start_time'] = None
+        context.user_data['space_url'] = None
+        context.user_data['request_type'] = None
+        context.user_data['job_id'] = None
+        context.user_data['failed_attempts'] = 0
+        
+        await update.message.reply_text(
+            "✅ Your current transaction has been cancelled.",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            "❌ No active transaction to cancel.",
+            parse_mode=ParseMode.HTML
+        )
+
 def main():
     """Start the bot."""
     try:
@@ -2426,6 +2446,7 @@ def main():
         application.add_handler(CommandHandler("list_groups", list_groups))
         application.add_handler(CommandHandler("remove_group", remove_group))
         application.add_handler(CommandHandler("summarize_space", summarize_space))
+        application.add_handler(CommandHandler("cancel", cancel_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_group_status))
         application.add_handler(ChatMemberHandler(handle_group_status))
