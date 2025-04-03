@@ -1032,8 +1032,21 @@ async def generate_and_send_audio(context, chat_id, message, request_type):
         asyncio.create_task(generate_audio_and_notify(context, chat_id, message))
 
 async def generate_audio_and_notify(context, chat_id, message):
-    # Strip markdown formatting
-    plain_text = message.replace('*', '').replace('_', '').replace('`', '').replace('[', '').replace(']', '')
+    # More robust markdown/formatting removal
+    plain_text = re.sub(r'\*\*?|__|`|~~|\[.*?\]\(.*?\)', '', message)
+    # Remove remaining special characters that might affect speech synthesis
+    plain_text = re.sub(r'[^\w\s.,?!;:()\-"\']+', ' ', plain_text)
+    
+    # Check text length before generating audio
+    if len(plain_text) > 10000:  # Adjust limit as needed
+        logger.warning(f"Text too long for audio generation: {len(plain_text)} characters")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ Text too long for audio conversion. Only the first part will be converted.",
+            parse_mode=ParseMode.HTML
+        )
+        plain_text = plain_text[:10000] + "... [Text truncated due to length]"
+    
     audio_filepath, error = await text_to_audio(plain_text)
     
     if audio_filepath and not error:
@@ -1045,7 +1058,7 @@ async def generate_audio_and_notify(context, chat_id, message):
                     audio=audio_file,
                     caption="🎧 Audio version of the Space summary",
                     title="Space Summary",
-                    performer="sqrDAO AI"
+                    performer="sqrAI"
                 )
         except Exception as e:
             logger.error(f"Failed to send audio file: {str(e)}")
@@ -1096,24 +1109,44 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
                     # Escape special characters for Markdown V2
                     escaped_chunk = chunk.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
                     
-                    if i == 0:
-                        # First chunk updates the original message
-                        logger.info("Updating original message with first chunk")
-                        await context.bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=message_id,
-                            text=escaped_chunk,
-                            parse_mode=ParseMode.MARKDOWN_V2
-                        )
-                    else:
-                        # Additional chunks as new messages
-                        logger.info("Sending additional chunk as new message")
-                        await context.bot.send_message(
-                            chat_id=chat_id,
-                            text=escaped_chunk,
-                            parse_mode=ParseMode.MARKDOWN_V2,
-                            reply_to_message_id=message_id  # Link to the original message
-                        )
+                    try:
+                        if i == 0:
+                            # First chunk updates the original message
+                            logger.info("Updating original message with first chunk")
+                            await context.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=message_id,
+                                text=escaped_chunk,
+                                parse_mode=ParseMode.MARKDOWN_V2
+                            )
+                        else:
+                            # Additional chunks as new messages
+                            logger.info("Sending additional chunk as new message")
+                            await context.bot.send_message(
+                                chat_id=chat_id,
+                                text=escaped_chunk,
+                                parse_mode=ParseMode.MARKDOWN_V2,
+                                reply_to_message_id=message_id  # Link to the original message
+                            )
+                    except telegram.error.BadRequest as e:
+                        # Handle specific Telegram API errors
+                        logger.error(f"Error sending message chunk {i+1}: {str(e)}")
+                        # Try sending without markdown if parsing fails
+                        if "can't parse entities" in str(e).lower():
+                            plain_chunk = chunk  # Use non-escaped version
+                            logger.info("Retrying without markdown parsing")
+                            if i == 0:
+                                await context.bot.edit_message_text(
+                                    chat_id=chat_id,
+                                    message_id=message_id,
+                                    text=plain_chunk
+                                )
+                            else:
+                                await context.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=plain_chunk,
+                                    reply_to_message_id=message_id
+                                )
                 
                 # Start audio generation in background if requested
                 if request_type == 'audio':
@@ -1209,7 +1242,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Send initial status message
                 status_message = await message.reply_text(
                     "✅ Transaction verified successfully!\n"
-                    "Processing your request...",
+                    "Processing your request...\n"
+                    "This can take up to 5-10 minutes.",
                     parse_mode=ParseMode.HTML
                 )
                 
