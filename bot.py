@@ -2235,6 +2235,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filtered_groups = [g for g in all_groups if "sqrdao" in g['title'].lower()]
     elif grouptype == "summit":
         filtered_groups = [g for g in all_groups if "summit" in g['title'].lower()]
+    elif grouptype == "sqrfund":
+        filtered_groups = [g for g in all_groups if "sqrfund" in g['title'].lower()]
     else:
         filtered_groups = all_groups
 
@@ -2304,6 +2306,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         summary += "📝 Message was sent to sqrDAO groups only\n\n"
     elif grouptype == "summit":
         summary += "📝 Message was sent to Summit groups only\n\n"
+    elif grouptype == "sqrfund":
+        summary += "📝 Message was sent to sqrFUND groups only\n\n"
     
     if failed_users:
         summary += f"❌ Failed to send to users:\n"
