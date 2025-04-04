@@ -2167,6 +2167,20 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
+def parse_mass_message_input(raw_input: str) -> Tuple[str, Optional[str]]:
+    """Parse mass message input to extract message and grouptype.
+    
+    Args:
+        raw_input (str): The raw input string to parse
+        
+    Returns:
+        Tuple[str, Optional[str]]: A tuple containing (message, grouptype)
+    """
+    if "|" in raw_input:
+        parts = raw_input.split("|", 1)
+        return parts[0].strip(), parts[1].strip().lower()
+    return raw_input.strip(), None
+
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /mass_message command - Send a message with optional image to all users and groups."""
@@ -2184,17 +2198,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Extract message and grouptype from caption if it contains the command
         if caption and caption.startswith('/mass_message'):
-            # Remove the command from the caption
-            caption = caption.replace('/mass_message', '').strip()
-            
-            # Check if the separator is present in the caption
-            if "|" in caption:
-                # Split the caption into message parts and grouptype
-                parts = caption.split("|", 1)  # Split on first occurrence only
-                message = parts[0].strip()
-                grouptype = parts[1].strip().lower() if len(parts) > 1 else None
-            else:
-                message = caption
+            # Remove the command from the caption and parse
+            message, grouptype = parse_mass_message_input(caption.replace('/mass_message', '', 1))
     else:
         # Handle text-only message
         if not context.args:
@@ -2207,18 +2212,10 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML
             )
             return
-
-        # Check if the separator is present in the arguments
-        if "|" in context.args:
-            # Split the arguments into message parts and grouptype
-            separator_index = context.args.index("|")
-            message_parts = context.args[:separator_index]  # All arguments before the separator
-            grouptype = context.args[separator_index + 1].strip().lower() if separator_index + 1 < len(context.args) else None
-            
-            # Join the message parts into a single string
-            message = " ".join(message_parts).strip()
-        else:
-            message = " ".join(context.args)  # If no separator, treat all as message
+        
+        # Parse the message and grouptype from arguments
+        raw_line = " ".join(context.args)
+        message, grouptype = parse_mass_message_input(raw_line)
 
     if not message and not photo:
         await update.message.reply_text(
@@ -2282,7 +2279,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             else:
                 # Determine announcement format based on grouptype
-                if grouptype in ["sqrdao", "summit"]:
+                if grouptype in ["sqrdao", "summit", ""]:
                     announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
                 else:
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
