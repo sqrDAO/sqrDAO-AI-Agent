@@ -2450,7 +2450,7 @@ def main():
         application.add_handler(CommandHandler("remove_group", remove_group))
         application.add_handler(CommandHandler("summarize_space", summarize_space))
         application.add_handler(CommandHandler("cancel", cancel_command))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_group_status))
         application.add_handler(ChatMemberHandler(handle_group_status))
         # Add handler for photos with mass_message command in caption
