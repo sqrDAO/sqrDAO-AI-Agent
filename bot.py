@@ -2246,7 +2246,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Send confirmation to the sender
-    group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else " (Summit groups only)" if grouptype == "summit" else ""
+    group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else " (Summit groups only)" if grouptype == "summit" else " (sqrFUND groups only)" if grouptype == "sqrfund" else " (All groups)"
     await update.message.reply_text(
         f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
         parse_mode=ParseMode.HTML
