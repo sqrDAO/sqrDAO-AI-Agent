@@ -2174,36 +2174,53 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = None
     caption = None
     grouptype = None
+    message = None
     
-    # Check if there are enough arguments
-    if len(context.args) < 1:  # At least a message and a grouptype
-        await update.message.reply_text(
-            "❌ Please provide a message and an optional grouptype.\n"
-            "Usage:\n"
-            "• /mass_message [message] | [grouptype]\n"
-            "• Example: /mass_message Hello everyone | sqrdao\n"
-            "If grouptype is 'sqrdao', the message will only be sent to groups/channels with 'sqrdao' in their title.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    # Check if the separator is present in the arguments
-    if "|" in context.args:
-        # Split the arguments into message parts and grouptype
-        separator_index = context.args.index("|")
-        message_parts = context.args[:separator_index]  # All arguments before the separator
-        grouptype = context.args[separator_index + 1].strip().lower() if separator_index + 1 < len(context.args) else None
-        
-        # Join the message parts into a single string
-        message = " ".join(message_parts).strip()
-    else:
-        message = " ".join(context.args)  # If no separator, treat all as message
-
+    # Check if there's an image with caption
     if update.message.photo:
         # Get the largest photo size
         photo = update.message.photo[-1].file_id
         caption = update.message.caption if update.message.caption else ""
-    elif not message:
+        
+        # Extract message and grouptype from caption if it contains the command
+        if caption and caption.startswith('/mass_message'):
+            # Remove the command from the caption
+            caption = caption.replace('/mass_message', '').strip()
+            
+            # Check if the separator is present in the caption
+            if "|" in caption:
+                # Split the caption into message parts and grouptype
+                parts = caption.split("|", 1)  # Split on first occurrence only
+                message = parts[0].strip()
+                grouptype = parts[1].strip().lower() if len(parts) > 1 else None
+            else:
+                message = caption
+    else:
+        # Handle text-only message
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Please provide a message and an optional grouptype.\n"
+                "Usage:\n"
+                "• /mass_message [message] | [grouptype]\n"
+                "• Example: /mass_message Hello everyone | sqrdao\n"
+                "If grouptype is 'sqrdao', the message will only be sent to groups/channels with 'sqrdao' in their title.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Check if the separator is present in the arguments
+        if "|" in context.args:
+            # Split the arguments into message parts and grouptype
+            separator_index = context.args.index("|")
+            message_parts = context.args[:separator_index]  # All arguments before the separator
+            grouptype = context.args[separator_index + 1].strip().lower() if separator_index + 1 < len(context.args) else None
+            
+            # Join the message parts into a single string
+            message = " ".join(message_parts).strip()
+        else:
+            message = " ".join(context.args)  # If no separator, treat all as message
+
+    if not message and not photo:
         await update.message.reply_text(
             "❌ Please provide a message or image to send.",
             parse_mode=ParseMode.HTML
@@ -2250,13 +2267,13 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if photo:
                 # Determine announcement format based on grouptype
-                if grouptype in ["sqrdao", "summit"]:
+                if grouptype in ["sqrdao", "summit", ""]:
                     announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
                 else:
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
                 
-                # Send photo with caption, stripping the command if present
-                formatted_caption = f"{announcement_prefix}\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
+                # Send photo with caption
+                formatted_caption = f"{announcement_prefix}\n\n{message}" if message else None
                 await context.bot.send_photo(
                     chat_id=group['id'],
                     photo=photo,
@@ -2270,7 +2287,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
                 
-                # Send text message without the command
+                # Send text message
                 await context.bot.send_message(
                     chat_id=group['id'],
                     text=f"{announcement_prefix}\n\n{message}",
