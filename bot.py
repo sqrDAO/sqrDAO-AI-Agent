@@ -1419,9 +1419,10 @@ async def set_bot_commands(application):
         ("website", "Get sqrDAO's and sqrFUND's website"),
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
-        ("balance", "Check $SQR token balance"),  # Added balance command
+        ("request_member", "Request to become a member"),
         ("sqr_info", "Get information about $SQR token"),
-        ("request_member", "Request to become a member")
+        ("balance", "Check $SQR token balance"),  # Added balance command
+        ("summarize_space", "Summarize a space using $SQR tokens")
     ]
     
     # Commands for regular members
