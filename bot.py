@@ -1419,9 +1419,10 @@ async def set_bot_commands(application):
         ("website", "Get sqrDAO's and sqrFUND's website"),
         ("contact", "Get contact information"),
         ("events", "View sqrDAO events"),
-        ("balance", "Check $SQR token balance"),  # Added balance command
+        ("request_member", "Request to become a member"),
         ("sqr_info", "Get information about $SQR token"),
-        ("request_member", "Request to become a member")
+        ("balance", "Check $SQR token balance"),  # Added balance command
+        ("summarize_space", "Summarize a space using $SQR tokens")
     ]
     
     # Commands for regular members
@@ -2166,6 +2167,20 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
+def parse_mass_message_input(raw_input: str) -> Tuple[str, Optional[str]]:
+    """Parse mass message input to extract message and grouptype.
+    
+    Args:
+        raw_input (str): The raw input string to parse
+        
+    Returns:
+        Tuple[str, Optional[str]]: A tuple containing (message, grouptype)
+    """
+    if "|" in raw_input:
+        parts = raw_input.split("|", 1)
+        return parts[0].strip(), parts[1].strip().lower()
+    return raw_input.strip(), None
+
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /mass_message command - Send a message with optional image to all users and groups."""
@@ -2173,36 +2188,36 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = None
     caption = None
     grouptype = None
+    message = None
     
-    # Check if there are enough arguments
-    if len(context.args) < 1:  # At least a message and a grouptype
-        await update.message.reply_text(
-            "❌ Please provide a message and an optional grouptype.\n"
-            "Usage:\n"
-            "• /mass_message [message] | [grouptype]\n"
-            "• Example: /mass_message Hello everyone | sqrdao\n"
-            "If grouptype is 'sqrdao', the message will only be sent to groups/channels with 'sqrdao' in their title.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    # Check if the separator is present in the arguments
-    if "|" in context.args:
-        # Split the arguments into message parts and grouptype
-        separator_index = context.args.index("|")
-        message_parts = context.args[:separator_index]  # All arguments before the separator
-        grouptype = context.args[separator_index + 1].strip().lower() if separator_index + 1 < len(context.args) else None
-        
-        # Join the message parts into a single string
-        message = " ".join(message_parts).strip()
-    else:
-        message = " ".join(context.args)  # If no separator, treat all as message
-
+    # Check if there's an image with caption
     if update.message.photo:
         # Get the largest photo size
         photo = update.message.photo[-1].file_id
         caption = update.message.caption if update.message.caption else ""
-    elif not message:
+        
+        # Extract message and grouptype from caption if it contains the command
+        if caption and caption.startswith('/mass_message'):
+            # Remove the command from the caption and parse
+            message, grouptype = parse_mass_message_input(caption.replace('/mass_message', '', 1))
+    else:
+        # Handle text-only message
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Please provide a message and an optional grouptype.\n"
+                "Usage:\n"
+                "• /mass_message [message] | [grouptype]\n"
+                "• Example: /mass_message Hello everyone | sqrdao\n"
+                "If grouptype is 'sqrdao', the message will only be sent to groups/channels with 'sqrdao' in their title.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Parse the message and grouptype from arguments
+        raw_line = " ".join(context.args)
+        message, grouptype = parse_mass_message_input(raw_line)
+
+    if not message and not photo:
         await update.message.reply_text(
             "❌ Please provide a message or image to send.",
             parse_mode=ParseMode.HTML
@@ -2249,13 +2264,13 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if photo:
                 # Determine announcement format based on grouptype
-                if grouptype in ["sqrdao", "summit"]:
+                if grouptype in ["sqrdao", "summit", ""]:
                     announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
                 else:
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
                 
-                # Send photo with caption, stripping the command if present
-                formatted_caption = f"{announcement_prefix}\n\n{caption.replace('/mass_message', '').strip()}" if caption else None
+                # Send photo with caption
+                formatted_caption = f"{announcement_prefix}\n\n{message}" if message else None
                 await context.bot.send_photo(
                     chat_id=group['id'],
                     photo=photo,
@@ -2264,12 +2279,12 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             else:
                 # Determine announcement format based on grouptype
-                if grouptype in ["sqrdao", "summit"]:
+                if grouptype in ["sqrdao", "summit", ""]:
                     announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
                 else:
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
                 
-                # Send text message without the command
+                # Send text message
                 await context.bot.send_message(
                     chat_id=group['id'],
                     text=f"{announcement_prefix}\n\n{message}",
@@ -2374,12 +2389,14 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔄 <b>Space Summarization Process</b>\n\n"
         f"Request Type: <b>{request_type.upper()}</b>\n"
         f"Required Amount: <b>{required_amount} $SQR</b>\n\n"
+        "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n\n"
         "To proceed with space summarization, please follow these steps:\n\n"
         "1. Send the required $SQR tokens to this address:\n"
-        "<code>Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7</code>\n\n"
+        "<code>Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7</code>\n"
         "2. Copy the transaction signature\n"
         "3. Paste the signature in this chat\n\n"
         "⚠️ <i>Note: The transaction must be completed within 30 minutes from now.</i>\n"
+        "If you need to cancel the current transaction, use the /cancel command.\n\n"
         "⏰ Deadline: " + (context.user_data['command_start_time'] + timedelta(minutes=30)).strftime("%H:%M:%S")
     )
     
@@ -2397,7 +2414,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(
             "✅ Your current transaction has been cancelled.\n\n"
-            "For refund, please contact @DarthCastelian.",
+            "For refund (if any), please contact @DarthCastelian.",
             parse_mode=ParseMode.HTML
         )
     else:
