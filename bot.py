@@ -1424,6 +1424,7 @@ async def set_bot_commands(application):
         ("request_member", "Request to become a member"),
         ("sqr_info", "Get information about $SQR token"),
         ("balance", "Check $SQR token balance"),  # Added balance command
+        # TODO: Re-enable when feature updates are completed (expected: 10 April 2025)
         # ("summarize_space", "Summarize a space using $SQR tokens") # Temporarily disabled - reason: pending feature updates
     ]
     
@@ -2188,26 +2189,18 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /mass_message command - Send a message with optional image or video to all users and groups."""
     logger.info("Starting mass_message command.")
     
-    # Check if there's an image or video attached
+    # Initialize variables
     media = None
     caption = None
     grouptype = None
     message = None
 
     logger.info(f"Receiving Message: {update.message}")
-    
+
     # Check if there's an image or video with caption
-    if update.message.photo:
-        logger.info(f"Detected photo in the message: {update.message.photo}")
-        media = update.message.photo[-1].file_id
-        caption = update.message.caption if update.message.caption else ""
-        
-        # Extract message and grouptype from caption if it contains the command
-        if caption and caption.startswith('/mass_message'):
-            message, grouptype = parse_mass_message_input(caption.replace('/mass_message', '', 1))
-    elif update.message.video:
-        logger.info(f"Detected video in the message: {update.message.video}")
-        media = update.message.video.file_id
+    if update.message.photo or update.message.video:
+        media = update.message.photo[-1].file_id if update.message.photo else update.message.video.file_id
+        logger.info(f"Detected {'photo' if update.message.photo else 'video'} in the message: {media}")
         caption = update.message.caption if update.message.caption else ""
         
         # Extract message and grouptype from caption if it contains the command
