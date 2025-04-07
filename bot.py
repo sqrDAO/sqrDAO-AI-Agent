@@ -2185,24 +2185,37 @@ def parse_mass_message_input(raw_input: str) -> Tuple[str, Optional[str]]:
 
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mass_message command - Send a message with optional image to all users and groups."""
-    # Check if there's an image attached
-    photo = None
+    """Handle /mass_message command - Send a message with optional image or video to all users and groups."""
+    logger.info("Starting mass_message command.")
+    
+    # Check if there's an image or video attached
+    media = None
     caption = None
     grouptype = None
     message = None
+
+    logger.info(f"Receiving Message: {update.message}")
     
-    # Check if there's an image with caption
+    # Check if there's an image or video with caption
     if update.message.photo:
-        # Get the largest photo size
-        photo = update.message.photo[-1].file_id
+        logger.info(f"Detected photo in the message: {update.message.photo}")
+        media = update.message.photo[-1].file_id
         caption = update.message.caption if update.message.caption else ""
         
         # Extract message and grouptype from caption if it contains the command
         if caption and caption.startswith('/mass_message'):
-            # Remove the command from the caption and parse
             message, grouptype = parse_mass_message_input(caption.replace('/mass_message', '', 1))
+    elif update.message.video:
+        logger.info(f"Detected video in the message: {update.message.video}")
+        media = update.message.video.file_id
+        caption = update.message.caption if update.message.caption else ""
+        
+        # Extract message and grouptype from caption if it contains the command
+        if caption and caption.startswith('/mass_message'):
+            message, grouptype = parse_mass_message_input(caption.replace('/mass_message', '', 1))
+
     else:
+        logger.info("No media detected, checking for text-only message.")
         # Handle text-only message
         if not context.args:
             await update.message.reply_text(
@@ -2219,9 +2232,9 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         raw_line = " ".join(context.args)
         message, grouptype = parse_mass_message_input(raw_line)
 
-    if not message and not photo:
+    if not message and not media:
         await update.message.reply_text(
-            "❌ Please provide a message or image to send.",
+            "❌ Please provide a message or media to send.",
             parse_mode=ParseMode.HTML
         )
         return
@@ -2252,7 +2265,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send confirmation to the sender
     group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else " (Summit groups only)" if grouptype == "summit" else " (sqrFUND groups only)" if grouptype == "sqrfund" else " (All groups)"
     await update.message.reply_text(
-        f"📤 Starting to send {'image' if photo else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
+        f"📤 Starting to send {'image' if media and update.message.photo else 'video' if media and update.message.video else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
         parse_mode=ParseMode.HTML
     )
     
@@ -2266,21 +2279,32 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for group in filtered_groups:
         try:
-            if photo:
+            logger.info(f"Sending message to group: {group['title']} (ID: {group['id']})")
+            if media:
                 # Determine announcement format based on grouptype
                 if grouptype in ["sqrdao", "summit", ""]:
                     announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
                 else:
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
                 
-                # Send photo with caption
+                # Send media (image or video) with caption
                 formatted_caption = f"{announcement_prefix}\n\n{message}" if message else None
-                await context.bot.send_photo(
-                    chat_id=group['id'],
-                    photo=photo,
-                    caption=formatted_caption,
-                    parse_mode=ParseMode.HTML if formatted_caption else None
-                )
+                if update.message.photo:
+                    logger.info("Sending photo to group.")
+                    await context.bot.send_photo(
+                        chat_id=group['id'],
+                        photo=media,
+                        caption=formatted_caption,
+                        parse_mode=ParseMode.HTML if formatted_caption else None
+                    )
+                elif update.message.video:
+                    logger.info("Sending video to group.")
+                    await context.bot.send_video(
+                        chat_id=group['id'],
+                        video=media,
+                        caption=formatted_caption,
+                        parse_mode=ParseMode.HTML if formatted_caption else None
+                    )
             else:
                 # Determine announcement format based on grouptype
                 if grouptype in ["sqrdao", "summit", ""]:
@@ -2289,6 +2313,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
                 
                 # Send text message
+                logger.info("Sending text message to group.")
                 await context.bot.send_message(
                     chat_id=group['id'],
                     text=f"{announcement_prefix}\n\n{message}",
@@ -2302,7 +2327,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Failed to send to group/channel {group['title']} (ID: {group['id']}): {str(e)}")
     
     # Send summary to the sender
-    summary = f"✅ {'Image' if photo else 'Message'} delivery complete!\n\n"
+    summary = f"✅ {'Image' if media and update.message.photo else 'Video' if media and update.message.video else 'Message'} delivery complete!\n\n"
     
     if grouptype == "sqrdao":
         summary += "📝 Message was sent to sqrDAO groups only\n\n"
@@ -2477,6 +2502,11 @@ def main():
         # Add handler for photos with mass_message command in caption
         application.add_handler(MessageHandler(
             filters.PHOTO & filters.CaptionRegex(r'^/mass_message'), mass_message
+        ))
+
+        # Add handler for videos with mass_message command in caption
+        application.add_handler(MessageHandler(
+            filters.VIDEO & filters.CaptionRegex(r'^/mass_message'), mass_message
         ))
 
         # Start the Bot
