@@ -513,10 +513,12 @@ def format_response_for_telegram(text):
     text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
     # Ensure proper handling of tags
-    # Example: Replace **bold** with <b>bold</b>
-    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)  # Bold
     text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)  # Italics
     text = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2">\1</a>', text)  # Links
+
+    # Replace standalone asterisks with bullet points
+    text = re.sub(r'(?<!\*)\*(?!\*)', '•', text)  # Replace standalone asterisks with bullet points
 
     return text
 
