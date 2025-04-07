@@ -32,6 +32,16 @@ from solders.signature import Signature
 import asyncio
 from gtts import gTTS
 import uuid
+from telegram.ext.filters import BaseFilter # Correct import path
+
+class DocumentWithMassMessageCaption(BaseFilter):
+    def filter(self, message):
+        # Check if it's a document AND has a caption starting with /mass_message
+        return bool(
+            message.document and
+            message.caption and
+            message.caption.startswith('/mass_message')
+        )
 
 # SNS resolution function
 async def resolve_sns_domain(domain: str) -> str:
@@ -2186,7 +2196,7 @@ def parse_mass_message_input(raw_input: str) -> Tuple[str, Optional[str]]:
 
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mass_message command - Send a message with optional image or video to all users and groups."""
+    """Handle /mass_message command - Send a message with optional image, video, or document to all users and groups."""
     logger.info("Starting mass_message command.")
     
     # Initialize variables
@@ -2197,10 +2207,18 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"Receiving Message: {update.message}")
 
-    # Check if there's an image or video with caption
-    if update.message.photo or update.message.video:
-        media = update.message.photo[-1].file_id if update.message.photo else update.message.video.file_id
-        logger.info(f"Detected {'photo' if update.message.photo else 'video'} in the message: {media}")
+    # Check if there's an image, video, or document with caption
+    if update.message.photo or update.message.video or update.message.document:
+        if update.message.photo:
+            media = update.message.photo[-1].file_id
+            logger.info("Detected photo in the message.")
+        elif update.message.video:
+            media = update.message.video.file_id
+            logger.info("Detected video in the message.")
+        elif update.message.document:
+            media = update.message.document.file_id
+            logger.info("Detected document in the message.")
+        
         caption = update.message.caption if update.message.caption else ""
         
         # Extract message and grouptype from caption if it contains the command
@@ -2258,7 +2276,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send confirmation to the sender
     group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else " (Summit groups only)" if grouptype == "summit" else " (sqrFUND groups only)" if grouptype == "sqrfund" else " (All groups)"
     await update.message.reply_text(
-        f"📤 Starting to send {'image' if media and update.message.photo else 'video' if media and update.message.video else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
+        f"📤 Starting to send {'image' if media and update.message.photo else 'video' if media and update.message.video else 'document' if media and update.message.document else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
         parse_mode=ParseMode.HTML
     )
     
@@ -2280,7 +2298,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
                 
-                # Send media (image or video) with caption
+                # Send media (image, video, or document) with caption
                 formatted_caption = f"{announcement_prefix}\n\n{message}" if message else None
                 if update.message.photo:
                     logger.info("Sending photo to group.")
@@ -2295,6 +2313,14 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_video(
                         chat_id=group['id'],
                         video=media,
+                        caption=formatted_caption,
+                        parse_mode=ParseMode.HTML if formatted_caption else None
+                    )
+                elif update.message.document:
+                    logger.info("Sending document to group.")
+                    await context.bot.send_document(
+                        chat_id=group['id'],
+                        document=media,
                         caption=formatted_caption,
                         parse_mode=ParseMode.HTML if formatted_caption else None
                     )
@@ -2320,7 +2346,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Failed to send to group/channel {group['title']} (ID: {group['id']}): {str(e)}")
     
     # Send summary to the sender
-    summary = f"✅ {'Image' if media and update.message.photo else 'Video' if media and update.message.video else 'Message'} delivery complete!\n\n"
+    summary = f"✅ {'Image' if media and update.message.photo else 'Video' if media and update.message.video else 'Document' if media and update.message.document else 'Message'} delivery complete!\n\n"
     
     if grouptype == "sqrdao":
         summary += "📝 Message was sent to sqrDAO groups only\n\n"
@@ -2500,6 +2526,11 @@ def main():
         # Add handler for videos with mass_message command in caption
         application.add_handler(MessageHandler(
             filters.VIDEO & filters.CaptionRegex(r'^/mass_message'), mass_message
+        ))
+
+        # Add handler for documents with mass_message command in caption using custom filter
+        application.add_handler(MessageHandler(
+            DocumentWithMassMessageCaption(), mass_message
         ))
 
         # Start the Bot
