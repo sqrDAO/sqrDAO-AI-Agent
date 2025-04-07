@@ -1424,7 +1424,7 @@ async def set_bot_commands(application):
         ("request_member", "Request to become a member"),
         ("sqr_info", "Get information about $SQR token"),
         ("balance", "Check $SQR token balance"),  # Added balance command
-        # ("summarize_space", "Summarize a space using $SQR tokens")
+        # ("summarize_space", "Summarize a space using $SQR tokens") # Temporarily disabled - reason: pending feature updates
     ]
     
     # Commands for regular members
