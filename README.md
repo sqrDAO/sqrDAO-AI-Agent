@@ -123,7 +123,7 @@ To summarize a Twitter Space:
 4. You'll receive a formatted summary of the Space content
 
 Example:
-```
+```bash
 /summarize_space https://twitter.com/i/spaces/YOUR_SPACE_ID
 ```
 
