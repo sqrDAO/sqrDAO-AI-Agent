@@ -292,6 +292,13 @@ def is_member(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
+        if user is None:
+            await update.message.reply_text(
+                "⚠️ Unable to identify user. Please try again.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+            
         if user.username and find_authorized_member_by_username(user.username):
             return await func(update, context)
         else:
@@ -307,6 +314,13 @@ def is_any_member(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
+        if user is None:
+            await update.message.reply_text(
+                "⚠️ Unable to identify user. Please try again.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+            
         if user.username and (find_authorized_member_by_username(user.username) or find_member_by_username(user.username)):
             return await func(update, context)
         else:
@@ -320,6 +334,13 @@ def is_any_member(func):
 async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /request_member command - Request to be added as a member."""
     user = update.effective_user
+    if user is None:
+        await update.message.reply_text(
+            "⚠️ Unable to identify user. Please try again.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+        
     user_id = user.id  # Get the user ID
 
     # Check if the user is already a member
@@ -423,13 +444,16 @@ async def reject_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    # Get user ID from pending requests before removing it
+    user_id = PENDING_REQUESTS[username]['user_id']
+    
     # Remove from pending requests
     del PENDING_REQUESTS[username]
     
     # Notify the user
     try:
         await context.bot.send_message(
-            chat_id=PENDING_REQUESTS[username]['user_id'],
+            chat_id=user_id,
             text="❌ Your membership request has been rejected.\n\n"
                  "If you believe this was a mistake, please use /contact command to contact the team."
         )
@@ -1220,31 +1244,200 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         logger.error(f"Full error traceback: {traceback.format_exc()}")
     return False
 
+async def handle_group_message(message: telegram.Message, context: ContextTypes.DEFAULT_TYPE):
+    """Handle messages in group chats."""
+    # Skip if we're awaiting a signature for space summarization
+    if context.user_data.get('awaiting_signature'):
+        return
+        
+    # Check for scammer accusations in group chats
+    if "scammer" in message.text.lower():
+        await message.reply_text("🚫 Rome wasn't built in one day! Building something meaningful takes time and dedication. Let's support our founders who are working hard to create value! 💪")
+        return
+    
+    # Check if the message is a command
+    if message.text.startswith('/'):
+        await message.reply_text(
+            "<i>Please use specific commands like /help, or send a regular message.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # For group chats, only respond if the bot is mentioned
+    if context.bot.username in message.text:
+        # Process the message as a normal user message
+        processed_text = message.text.replace(f"@{context.bot.username}", "").strip()
+        
+        if not processed_text:
+            await message.reply_text(
+                "<i>I couldn't process an empty message. Please send some text.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Get relevant context from previous conversations
+        relevant_context = db.get_relevant_context(message.from_user.id, processed_text)
+        
+        # Process the message with context
+        response = process_message_with_context(processed_text, relevant_context)
+        
+        # Store the conversation
+        db.store_conversation(message.from_user.id, processed_text, response)
+        
+        # Format and send response with HTML formatting
+        formatted_text = format_response_for_telegram(response)
+        
+        await message.reply_text(
+            formatted_text,
+            parse_mode=ParseMode.HTML
+        )
+
+async def handle_private_message(message: telegram.Message, context: ContextTypes.DEFAULT_TYPE):
+    """Handle messages in private chats."""
+    # Skip if we're awaiting a signature for space summarization
+    if context.user_data.get('awaiting_signature'):
+        return
+        
+    # Check for scammer accusations in private chats
+    if "scammer" in message.text.lower():
+        await message.reply_text("🚫 Rome wasn't built in one day! Building something meaningful takes time and dedication. Let's support our founders who are working hard to create value! 💪")
+        return
+
+    # Check if the message is a command
+    if message.text.startswith('/'):
+        await message.reply_text(
+            "<i>Please use specific commands like /help, or send a regular message.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Check if this is a template request
+    if message.text.lower().strip() == "template":
+        try:
+            with open('template.csv', 'rb') as template_file:
+                await message.reply_document(
+                    document=template_file,
+                    filename='sqrdao_knowledge_template.csv',
+                    caption="📝 Here's a template CSV file for bulk learning.\n\n"
+                           "The file includes:\n"
+                           "• Example entries\n"
+                           "• Format rules\n"
+                           "• Character limits\n"
+                           "• Supported delimiters\n\n"
+                           "Fill in your entries and send the file back to me!"
+                )
+            return
+        except Exception as e:
+            logger.error(f"Error sending template: {str(e)}")
+            await message.reply_text(
+                "❌ Sorry, I couldn't send the template file. Please try again later."
+            )
+            return
+    
+    try:
+        # Get relevant context from previous conversations
+        relevant_context = db.get_relevant_context(message.from_user.id, message.text)
+        
+        # Process the message with context
+        response = process_message_with_context(message.text, relevant_context)
+        
+        # Store the conversation
+        db.store_conversation(message.from_user.id, message.text, response)
+        
+        # Format and send response with HTML formatting
+        formatted_text = format_response_for_telegram(response)
+        
+        await message.reply_text(
+            formatted_text,
+            parse_mode=ParseMode.HTML
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
+        await message.reply_text(
+            "<i>I encountered an error while processing your message. Please try again.</i>",
+            parse_mode=ParseMode.HTML
+        )
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming messages."""
+    """Handle incoming messages for space summarization feature."""
     try:
         message = update.message
         if not message or not message.text:
             return
 
-        # First check if we're awaiting a signature for space summarization
-        if context.user_data.get('awaiting_signature'):
-            # Only process summarize_space command status in private chats
-            if update.message.chat.type != 'private':
-                await update.message.reply_text(
-                    "⚠️ This command is only available in private chats.",
-                    parse_mode=ParseMode.HTML
-                )
-                return
+        # Only process if we're awaiting a signature for space summarization
+        if not context.user_data.get('awaiting_signature'):
+            # If not awaiting signature, let other handlers process the message
+            if message.chat.type == 'private':
+                await handle_private_message(message, context)
+            elif message.chat.type in ['group', 'supergroup']:
+                await handle_group_message(message, context)
+            return
 
-            command_start_time = context.user_data.get('command_start_time')
-            space_url = context.user_data.get('space_url')
-            request_type = context.user_data.get('request_type', 'text')  # Default to 'text' if not set
+        # Only process summarize_space command status in private chats
+        if update.message.chat.type != 'private':
+            await update.message.reply_text(
+                "⚠️ This command is only available in private chats.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        command_start_time = context.user_data.get('command_start_time')
+        space_url = context.user_data.get('space_url')
+        request_type = context.user_data.get('request_type', 'text')  # Default to 'text' if not set
+        
+        if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
+            await message.reply_text(
+                "❌ Time limit expired!\n"
+                "The 30-minute window for completing the transaction has passed.\n"
+                "Please use /summarize_space command again to start a new transaction.",
+                parse_mode=ParseMode.HTML
+            )
+            context.user_data['awaiting_signature'] = False
+            context.user_data['command_start_time'] = None
+            context.user_data['space_url'] = None
+            context.user_data['request_type'] = None
+            context.user_data['job_id'] = None
+            context.user_data['failed_attempts'] = 0
+            return
+
+        signature = message.text.strip()
+        
+        is_successful, message_text, job_id = await check_transaction_status(signature, command_start_time, space_url, request_type)
+        
+        if is_successful:
+            # Send initial status message
+            status_message = await message.reply_text(
+                "✅ Transaction verified successfully!\n"
+                "Processing your request...\n"
+                "This can take up to 5-10 minutes.",
+                parse_mode=ParseMode.HTML
+            )
             
-            if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
+            # If we have a job ID, start periodic checking
+            if job_id:
+                # Store the job_id in user_data
+                context.user_data['job_id'] = job_id
+                # Start the periodic check in the background
+                asyncio.create_task(periodic_job_check(
+                    context=context,
+                    job_id=job_id,
+                    space_url=space_url,
+                    chat_id=message.chat_id,
+                    message_id=status_message.message_id,
+                    request_type=request_type
+                ))
+            else:
+                await message.reply_text(message_text, parse_mode=ParseMode.HTML)
+        else:
+            # Increment failed attempts counter
+            failed_attempts = context.user_data.get('failed_attempts', 0) + 1
+            context.user_data['failed_attempts'] = failed_attempts
+            
+            if failed_attempts >= 3:
                 await message.reply_text(
-                    "❌ Time limit expired!\n"
-                    "The 30-minute window for completing the transaction has passed.\n"
+                    "❌ Maximum number of failed attempts reached.\n"
                     "Please use /summarize_space command again to start a new transaction.",
                     parse_mode=ParseMode.HTML
                 )
@@ -1254,163 +1447,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data['request_type'] = None
                 context.user_data['job_id'] = None
                 context.user_data['failed_attempts'] = 0
-                return
-
-            signature = message.text.strip()
-            
-            is_successful, message_text, job_id = await check_transaction_status(signature, command_start_time, space_url, request_type)
-            
-            if is_successful:
-                # Send initial status message
-                status_message = await message.reply_text(
-                    "✅ Transaction verified successfully!\n"
-                    "Processing your request...\n"
-                    "This can take up to 5-10 minutes.",
-                    parse_mode=ParseMode.HTML
-                )
-                
-                # If we have a job ID, start periodic checking
-                if job_id:
-                    # Store the job_id in user_data
-                    context.user_data['job_id'] = job_id
-                    # Start the periodic check in the background
-                    asyncio.create_task(periodic_job_check(
-                        context=context,
-                        job_id=job_id,
-                        space_url=space_url,
-                        chat_id=message.chat_id,
-                        message_id=status_message.message_id,
-                        request_type=request_type
-                    ))
-                else:
-                    await message.reply_text(message_text, parse_mode=ParseMode.HTML)
             else:
-                # Increment failed attempts counter
-                failed_attempts = context.user_data.get('failed_attempts', 0) + 1
-                context.user_data['failed_attempts'] = failed_attempts
-                
-                if failed_attempts >= 3:
-                    await message.reply_text(
-                        "❌ Maximum number of failed attempts reached.\n"
-                        "Please use /summarize_space command again to start a new transaction.",
-                        parse_mode=ParseMode.HTML
-                    )
-                    context.user_data['awaiting_signature'] = False
-                    context.user_data['command_start_time'] = None
-                    context.user_data['space_url'] = None
-                    context.user_data['request_type'] = None
-                    context.user_data['job_id'] = None
-                    context.user_data['failed_attempts'] = 0
-                else:
-                    remaining_attempts = 3 - failed_attempts
-                    required_amount = 2000 if request_type == 'audio' else 1000
-                    await message.reply_text(
-                        f"{message_text}\n\n"
-                        f"Please ensure you:\n"
-                        f"1. Send exactly {required_amount} $SQR tokens\n"
-                        f"2. Complete the transaction within 30 minutes\n"
-                        f"3. Send the correct transaction signature\n\n"
-                        f"⚠️ You have {remaining_attempts} attempt{'s' if remaining_attempts > 1 else ''} remaining.",
-                        parse_mode=ParseMode.HTML
-                    )
-            return
-
-        # Only proceed with other message handling if we're not awaiting a signature
-        # Check for scammer accusations in any chat
-        if "scammer" in message.text.lower():
-            await message.reply_text("🚫 Rome wasn't built in one day! Building something meaningful takes time and dedication. Let's support our founders who are working hard to create value! 💪")
-            return
-
-        # Check if the message is a command
-        if message.text.startswith('/'):
-            await message.reply_text(
-                "<i>Please use specific commands like /help, or send a regular message.</i>",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # For group chats, ignore all other messages
-        if message.chat.type != 'private':
-            return
-
-        # Only process conversational features in private chats
-        # Check if the message mentions the bot
-        if context.bot.username in message.text:
-            # Process the message as a normal user message
-            message.text = message.text.replace(f"@{context.bot.username}", "").strip()
-            
-            if not message.text:
+                remaining_attempts = 3 - failed_attempts
+                required_amount = 2000 if request_type == 'audio' else 1000
                 await message.reply_text(
-                    "<i>I couldn't process an empty message. Please send some text.</i>",
+                    f"{message_text}\n\n"
+                    f"Please ensure you:\n"
+                    f"1. Send exactly {required_amount} $SQR tokens\n"
+                    f"2. Complete the transaction within 30 minutes\n"
+                    f"3. Send the correct transaction signature\n\n"
+                    f"⚠️ You have {remaining_attempts} attempt{'s' if remaining_attempts > 1 else ''} remaining.",
                     parse_mode=ParseMode.HTML
                 )
-                return
-            
-            # Get relevant context from previous conversations
-            relevant_context = db.get_relevant_context(update.effective_user.id, message.text)
-            
-            # Process the message with context
-            response = process_message_with_context(message.text, relevant_context)
-            
-            # Store the conversation
-            db.store_conversation(update.effective_user.id, message.text, response)
-            
-            # Format and send response with HTML formatting
-            formatted_text = format_response_for_telegram(response)
-            
-            await message.reply_text(
-                formatted_text,
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # Check if this is a template request
-        if message.text.lower().strip() == "template":
-            try:
-                with open('template.csv', 'rb') as template_file:
-                    await message.reply_document(
-                        document=template_file,
-                        filename='sqrdao_knowledge_template.csv',
-                        caption="📝 Here's a template CSV file for bulk learning.\n\n"
-                               "The file includes:\n"
-                               "• Example entries\n"
-                               "• Format rules\n"
-                               "• Character limits\n"
-                               "• Supported delimiters\n\n"
-                               "Fill in your entries and send the file back to me!"
-                    )
-                return
-            except Exception as e:
-                logger.error(f"Error sending template: {str(e)}")
-                await message.reply_text(
-                    "❌ Sorry, I couldn't send the template file. Please try again later."
-                )
-                return
-        
-        try:
-            # Get relevant context from previous conversations
-            relevant_context = db.get_relevant_context(update.effective_user.id, message.text)
-            
-            # Process the message with context
-            response = process_message_with_context(message.text, relevant_context)
-            
-            # Store the conversation
-            db.store_conversation(update.effective_user.id, message.text, response)
-            
-            # Format and send response with HTML formatting
-            formatted_text = format_response_for_telegram(response)
-            
-            await message.reply_text(
-                formatted_text,
-                parse_mode=ParseMode.HTML
-            )
-            
-        except Exception as e:
-            logger.error(f"Error processing message: {str(e)}")
-            await message.reply_text(
-                "<i>I encountered an error while processing your message. Please try again.</i>",
-                parse_mode=ParseMode.HTML
-            )
 
     except Exception as e:
         logger.error(f"Error handling message: {str(e)}")
@@ -2501,9 +2549,24 @@ def main():
         application.add_handler(CommandHandler("remove_group", remove_group))
         application.add_handler(CommandHandler("summarize_space", summarize_space))
         application.add_handler(CommandHandler("cancel", cancel_command))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        
+        # Register message handlers for different chat types
+        # Handler for space summarization feature (must be first to check for awaiting_signature)
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, 
+            handle_message
+        ))
+        
+        # Specific handlers for group messages only (private messages are handled by handle_message)
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, 
+            lambda update, context: handle_group_message(update.message, context)
+        ))
+        
+        # Handler for group status updates
         application.add_handler(MessageHandler(filters.ChatType.GROUPS, handle_group_status))
         application.add_handler(ChatMemberHandler(handle_group_status))
+        
         # Add handler for photos with mass_message command in caption
         application.add_handler(MessageHandler(
             filters.PHOTO & filters.CaptionRegex(r'^/mass_message'), mass_message
