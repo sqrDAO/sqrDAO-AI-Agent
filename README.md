@@ -103,6 +103,37 @@ The `/summarize_space` command allows users to:
 - Handle multiple attempts with proper error messages
 - Support for both private and group chats
 
+#### Integration with sqrDAO Spaces Summarization API
+
+The bot integrates with the [sqrDAO Spaces Summarization API](https://github.com/sqrDAO/spaces-summarization) to provide high-quality summaries of Twitter Spaces. This integration:
+
+- Uses yt-dlp to download Twitter Spaces audio
+- Leverages Google's Generative AI (Gemini) for content summarization
+- Supports asynchronous processing for long Spaces
+- Provides job tracking and status updates
+- Handles authentication and API key management
+- Supports custom prompt types for different summarization styles
+
+#### Usage
+
+To summarize a Twitter Space:
+1. Send the `/summarize_space` command followed by the Space URL
+2. The bot will verify your SQR token balance and process the payment
+3. The Space will be downloaded and processed by the sqrDAO Spaces Summarization API
+4. You'll receive a formatted summary of the Space content
+
+Example:
+```bash
+/summarize_space https://twitter.com/i/spaces/YOUR_SPACE_ID
+```
+
+#### Token Requirements
+
+- Each Space summarization requires a small fee in SQR tokens
+- The fee is automatically deducted from your wallet
+- You must have sufficient SQR tokens in your wallet to use this feature
+- Token transfers are verified on-chain before processing begins
+
 ## Setup
 
 ### Setting Up the Bot on Telegram
@@ -184,6 +215,8 @@ GEMINI_API_KEY=your_gemini_api_key
 GOOGLE_API_KEY=your_google_api_key
 GOOGLE_CSE_ID=your_google_cse_id
 SOLANA_RPC_URL=your_solana_rpc_url
+SPACES_API_URL=https://spaces.sqrfund.ai/api
+SPACES_API_KEY=your_spaces_api_key
 ```
 
 4. Run the bot:
@@ -349,6 +382,9 @@ Core dependencies:
 - `solana` - Solana blockchain library
 - `solders` - Solana data structures
 - `base58` - Base58 encoding/decoding
+- `yt-dlp` - Twitter Spaces audio download
+- `aiohttp` - Asynchronous HTTP client for API integration
+- `asyncio` - Asynchronous I/O support
 
 For a complete list with versions, see `requirements.txt`.
 
