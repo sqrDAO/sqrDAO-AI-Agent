@@ -1434,8 +1434,7 @@ async def set_bot_commands(application):
         ("request_member", "Request to become a member"),
         ("sqr_info", "Get information about $SQR token"),
         ("balance", "Check $SQR token balance"),  # Added balance command
-        # TODO: Re-enable when feature updates are completed (expected: 10 April 2025)
-        # ("summarize_space", "Summarize a space using $SQR tokens") # Temporarily disabled - reason: pending feature updates
+        ("summarize_space", "Summarize a space using $SQR tokens") # pending feature updates
     ]
     
     # Commands for regular members
