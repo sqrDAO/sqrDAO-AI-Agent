@@ -2417,10 +2417,10 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Validate the space URL
     space_url = context.args[1]
-    if not space_url.startswith("https://x.com/i/spaces/") and not space_url.startswith("https://x.com/i/broadcasts/"):
+    if not space_url.startswith("https://x.com/i/spaces/"):
         await update.message.reply_text(
             "❌ Invalid X Space URL format.\n"
-            "Please provide a valid URL starting with 'https://x.com/i/spaces/' or 'https://x.com/i/broadcasts/'",
+            "Please provide a valid URL starting with 'https://x.com/i/spaces/'",
             parse_mode=ParseMode.HTML
         )
         return
