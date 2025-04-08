@@ -32,7 +32,7 @@ from solders.signature import Signature
 import asyncio
 from gtts import gTTS
 import uuid
-from telegram.ext.filters import BaseFilter # Correct import path
+from telegram.ext.filters import BaseFilter
 
 class DocumentWithMassMessageCaption(BaseFilter):
     def filter(self, message):
@@ -2196,27 +2196,20 @@ def parse_mass_message_input(raw_input: str) -> Tuple[str, Optional[str]]:
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /mass_message command - Send a message with optional image, video, or document to all users and groups."""
-    logger.info("Starting mass_message command.")
-    
     # Initialize variables
     media = None
     caption = None
     grouptype = None
     message = None
 
-    logger.info(f"Receiving Message: {update.message}")
-
     # Check if there's an image, video, or document with caption
     if update.message.photo or update.message.video or update.message.document:
         if update.message.photo:
             media = update.message.photo[-1].file_id
-            logger.info("Detected photo in the message.")
         elif update.message.video:
             media = update.message.video.file_id
-            logger.info("Detected video in the message.")
         elif update.message.document:
             media = update.message.document.file_id
-            logger.info("Detected document in the message.")
         
         caption = update.message.caption if update.message.caption else ""
         
@@ -2225,7 +2218,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message, grouptype = parse_mass_message_input(caption.replace('/mass_message', '', 1))
 
     else:
-        logger.info("No media detected, checking for text-only message.")
         # Handle text-only message
         if not context.args:
             await update.message.reply_text(
@@ -2289,7 +2281,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for group in filtered_groups:
         try:
-            logger.info(f"Sending message to group: {group['title']} (ID: {group['id']})")
             if media:
                 # Determine announcement format based on grouptype
                 if grouptype in ["sqrdao", "summit", ""]:
@@ -2300,7 +2291,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Send media (image, video, or document) with caption
                 formatted_caption = f"{announcement_prefix}\n\n{message}" if message else None
                 if update.message.photo:
-                    logger.info("Sending photo to group.")
                     await context.bot.send_photo(
                         chat_id=group['id'],
                         photo=media,
@@ -2308,7 +2298,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode=ParseMode.HTML if formatted_caption else None
                     )
                 elif update.message.video:
-                    logger.info("Sending video to group.")
                     await context.bot.send_video(
                         chat_id=group['id'],
                         video=media,
@@ -2316,7 +2305,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode=ParseMode.HTML if formatted_caption else None
                     )
                 elif update.message.document:
-                    logger.info("Sending document to group.")
                     await context.bot.send_document(
                         chat_id=group['id'],
                         document=media,
@@ -2331,7 +2319,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
                 
                 # Send text message
-                logger.info("Sending text message to group.")
                 await context.bot.send_message(
                     chat_id=group['id'],
                     text=f"{announcement_prefix}\n\n{message}",
