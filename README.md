@@ -382,9 +382,6 @@ Core dependencies:
 - `solana` - Solana blockchain library
 - `solders` - Solana data structures
 - `base58` - Base58 encoding/decoding
-- `yt-dlp` - Twitter Spaces audio download
-- `aiohttp` - Asynchronous HTTP client for API integration
-- `asyncio` - Asynchronous I/O support
 
 For a complete list with versions, see `requirements.txt`.
 
