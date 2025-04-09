@@ -481,7 +481,9 @@ async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     requests_text = "<b>Pending Member Requests:</b>\n\n"
     for user_id, request in PENDING_REQUESTS.items():
-        requests_text += f"• {request['username']} (Requested: {request['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})\n"
+        username_display = request['username'] if request['username'].startswith('@') else f"@{request['username']}"
+        requests_text += f"• {username_display} (Requested: {request['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})\n"
+
     await update.message.reply_text(requests_text, parse_mode=ParseMode.HTML)
 
 # Configure API keys
@@ -2348,6 +2350,22 @@ def parse_mass_message_input(raw_input: str) -> Tuple[str, Optional[str]]:
         return parts[0].strip(), parts[1].strip().lower()
     return raw_input.strip(), None
 
+def get_announcement_prefix(grouptype: str) -> str:
+    """Get the appropriate announcement prefix based on group type.
+    
+    Args:
+        grouptype (str): The type of group ('sqrdao', 'summit', 'sqrfund', or None)
+        
+    Returns:
+        str: The formatted announcement prefix
+    """
+    if grouptype in ["sqrdao", "summit", ""]:
+        return "📢 <b>Announcement from sqrDAO:</b>"
+    elif grouptype == "sqrfund":
+        return "📢 <b>Announcement from sqrFUND:</b>"
+    else:
+        return "📢 <b>Announcement:</b>"
+
 @is_member
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /mass_message command - Send a message with optional image, video, or document to all users and groups."""
@@ -2479,13 +2497,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for group in filtered_groups:
         try:
             if media:
-                # Determine announcement format based on grouptype
-                if grouptype in ["sqrdao", "summit", ""]:
-                    announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
-                elif grouptype == "sqrfund":
-                    announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
-                else:
-                    announcement_prefix = "📢 <b>Announcement:</b>"
+                # Get announcement prefix using helper function
+                announcement_prefix = get_announcement_prefix(grouptype)
                 
                 # Send media (image, video, or document) with caption
                 formatted_caption = f"{announcement_prefix}\n\n{message}" if message else None
@@ -2511,13 +2524,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode=ParseMode.HTML if formatted_caption else None
                     )
             else:
-                # Determine announcement format based on grouptype
-                if grouptype in ["sqrdao", "summit", ""]:
-                    announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
-                elif grouptype == "sqrfund":
-                    announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
-                else:
-                    announcement_prefix = "📢 <b>Announcement:</b>"
+                # Get announcement prefix using helper function
+                announcement_prefix = get_announcement_prefix(grouptype)
                 
                 # Send text message
                 await context.bot.send_message(
