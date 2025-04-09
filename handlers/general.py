@@ -148,6 +148,27 @@ Stay updated with our latest events, workshops, and community gatherings!
 """
     await update.message.reply_text(events_text, parse_mode=ParseMode.HTML)
 
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /cancel command - Cancel the current transaction."""
+    if context.user_data.get('awaiting_signature'):
+        context.user_data['awaiting_signature'] = False
+        context.user_data['command_start_time'] = None
+        context.user_data['space_url'] = None
+        context.user_data['request_type'] = None
+        context.user_data['job_id'] = None
+        context.user_data['failed_attempts'] = 0
+        
+        await update.message.reply_text(
+            "✅ Your current transaction has been cancelled.\n\n"
+            "For refund (if any), please contact @DarthCastelian.",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            "❌ No active transaction to cancel.",
+            parse_mode=ParseMode.HTML
+        )
+
 def find_authorized_member_by_username(username: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[dict]:
     """Find an authorized member by username."""
     for member in context.bot_data['authorized_members']:

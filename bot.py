@@ -20,13 +20,13 @@ from handlers.knowledge import (
     learn_command, bulk_learn_command, learn_from_url
 )
 from handlers.solana import (
-    check_balance, process_signature, sqr_info
+    check_balance, sqr_info
 )
 from handlers.spaces import (
-    summarize_space, handle_successful_transaction,
-    handle_failed_transaction
+    summarize_space
 )
 from handlers.mass_message import mass_message
+from handlers.spaces import process_signature
 
 # Import database and utils
 from db import Database

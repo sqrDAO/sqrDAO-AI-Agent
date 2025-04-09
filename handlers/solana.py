@@ -15,7 +15,6 @@ from solders.keypair import Keypair
 from spl.token.client import Token
 from utils.utils import format_response_for_telegram, get_sqr_info, resolve_sns_domain
 from base58 import b58decode
-from handlers.spaces import handle_successful_transaction, handle_failed_transaction
 from config import (
     SOLANA_RPC_URL,
     SQR_TOKEN_MINT,
@@ -245,63 +244,3 @@ async def sqr_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Error fetching SQR token information. Please try again later.",
             parse_mode=ParseMode.HTML
         )
-
-async def check_transaction_status(signature: str, command_start_time: datetime, 
-                                 space_url: str = None, request_type: str = 'text') -> Tuple[bool, str, Optional[str]]:
-    """Check the status of a Solana transaction."""
-    try:
-        client = AsyncClient(SOLANA_RPC_URL, commitment=Commitment("confirmed"))
-        
-        # Check if transaction is confirmed
-        response = await client.get_signature_statuses([signature])
-        if not response.value[0]:
-            return False, "Transaction not found", None
-        
-        status = response.value[0]
-        if status.err:
-            return False, f"Transaction failed: {status.err}", None
-        
-        # Get transaction details
-        tx = await client.get_transaction(signature)
-        if not tx:
-            return False, "Could not get transaction details", None
-        
-        # Check if transaction is to the correct recipient
-        for instruction in tx.transaction.message.instructions:
-            if instruction.program_id == TOKEN_PROGRAM_ID:
-                for account in instruction.accounts:
-                    if account.pubkey == RECIPIENT_WALLET:
-                        # Transaction is confirmed and correct
-                        return True, "Transaction confirmed", None
-        
-        return False, "Transaction not to correct recipient", None
-        
-    except Exception as e:
-        logger.error(f"Error checking transaction: {str(e)}")
-        return False, f"Error checking transaction: {str(e)}", None
-    finally:
-        await client.close()
-
-async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, message: Message):
-    """Process a transaction signature."""
-    command_start_time = datetime.now()
-    space_url = context.user_data.get('space_url')
-    request_type = context.user_data.get('request_type', 'text')
-    
-    # Reset user data
-    context.user_data['awaiting_signature'] = False
-    context.user_data['command_start_time'] = None
-    context.user_data['space_url'] = None
-    context.user_data['request_type'] = None
-    
-    # Check transaction status
-    success, status_message, job_id = await check_transaction_status(
-        signature, command_start_time, space_url, request_type
-    )
-    
-    if success:
-        await handle_successful_transaction(
-            context, message, message.text, job_id, space_url, request_type
-        )
-    else:
-        await handle_failed_transaction(context, message, message.text, request_type) 

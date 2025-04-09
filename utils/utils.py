@@ -169,3 +169,15 @@ def load_authorized_members(db):
     except Exception as e:
         logger.error(f"Error loading authorized members: {str(e)}")
         return []
+    
+
+def reset_user_data(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reset all user data related to space summarization."""
+    context.user_data.update({
+        'awaiting_signature': False,
+        'command_start_time': None,
+        'space_url': None,
+        'request_type': None,
+        'job_id': None,
+        'failed_attempts': 0
+    })
