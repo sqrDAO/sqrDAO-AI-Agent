@@ -244,7 +244,10 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # If first item is a dictionary, treat as list of dictionaries
             if isinstance(groups[0], dict):
                 for group in groups:
-                    groups_text += f"• {group.get('name', 'Unknown')} (ID: {group.get('id', 'Unknown')})\n"
+                    # Check for title field which is used in the database
+                    group_name = group.get('title', group.get('name', 'Unknown'))
+                    group_id = group.get('id', 'Unknown')
+                    groups_text += f"• {group_name} (ID: {group_id})\n"
             # If first item is a list/tuple, treat as list of lists/tuples
             elif isinstance(groups[0], (list, tuple)):
                 for group in groups:
@@ -286,11 +289,19 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Add group
+    # Add group with title field to match database format
     context.bot_data['group_members'].append({
         'id': group_id,
-        'name': group_name
+        'title': group_name,
+        'type': 'group',
+        'added_at': datetime.now().isoformat()
     })
+    
+    # Store the updated groups in the database
+    try:
+        context.bot_data['db'].store_knowledge("groups", json.dumps(context.bot_data['group_members']))
+    except Exception as e:
+        logger.error(f"Error storing group data: {str(e)}")
     
     await update.message.reply_text(
         f"✅ Successfully added {group_name} to tracked groups.",
@@ -312,9 +323,17 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Find and remove group
     for i, group in enumerate(context.bot_data['group_members']):
         if group['id'] == group_id:
+            group_name = group.get('title', 'Unknown Group')
             context.bot_data['group_members'].pop(i)
+            
+            # Store the updated groups in the database
+            try:
+                context.bot_data['db'].store_knowledge("groups", json.dumps(context.bot_data['group_members']))
+            except Exception as e:
+                logger.error(f"Error storing group data: {str(e)}")
+                
             await update.message.reply_text(
-                f"✅ Successfully removed {group['name']} from tracked groups.",
+                f"✅ Successfully removed {group_name} from tracked groups.",
                 parse_mode=ParseMode.HTML
             )
             return

@@ -20,12 +20,13 @@ from handlers.knowledge import (
     learn_command, bulk_learn_command, learn_from_url
 )
 from handlers.solana import (
-    check_balance, process_signature
+    check_balance, process_signature, sqr_info
 )
 from handlers.spaces import (
     summarize_space, handle_successful_transaction,
     handle_failed_transaction
 )
+from handlers.mass_message import mass_message
 
 # Import database and utils
 from db import Database
@@ -201,12 +202,16 @@ def main():
         application.add_handler(CommandHandler("bulk_learn", bulk_learn_command))
         application.add_handler(CommandHandler("learn_from_url", learn_from_url))
         application.add_handler(CommandHandler("balance", check_balance))
+        application.add_handler(CommandHandler("sqr_info", sqr_info))
         application.add_handler(CommandHandler("summarize_space", summarize_space))
         application.add_handler(CommandHandler("list_members", list_members))
+        application.add_handler(CommandHandler("approve_member", approve_member))
+        application.add_handler(CommandHandler("reject_member", reject_member))
         application.add_handler(CommandHandler("list_requests", list_requests))
         application.add_handler(CommandHandler("list_groups", list_groups))
         application.add_handler(CommandHandler("add_group", add_group))
         application.add_handler(CommandHandler("remove_group", remove_group))
+        application.add_handler(CommandHandler("mass_message", mass_message))
 
         # Add message handler
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -222,11 +227,13 @@ def main():
             ("request_member", "Request member access"),
             ("resources", "Access member resources"),
             ("balance", "Check SQR token balance"),
+            ("sqr_info", "Get SQR token information"),
             ("summarize_space", "Summarize a Twitter Space")
         ]
+        
         application.bot.set_my_commands(commands)
-
-        # Start the bot
+            
+        # Run the bot
         application.run_polling()
 
     except Exception as e:

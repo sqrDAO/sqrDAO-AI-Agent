@@ -15,6 +15,7 @@ SQR_FUND_API_KEY = os.getenv('SQR_FUND_API_KEY')
 SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
 SQR_TOKEN_MINT = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"
 RECIPIENT_WALLET = "Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7"
+TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 
 # Token Costs
 TEXT_SUMMARY_COST = 1000
@@ -26,7 +27,7 @@ JOB_CHECK_TIMEOUT_SECONDS = 180
 MAX_JOB_CHECK_ATTEMPTS = 30
 
 # Database
-DATABASE_FILE = 'bot_memory.db'
+DATABASE_FILE = os.getenv('DATABASE_FILE', 'bot_memory.db')
 
 # Message Limits
 MAX_MESSAGE_LENGTH = 4000
@@ -40,6 +41,13 @@ ERROR_MESSAGES = {
     'timeout': "❌ Time limit expired!",
     'space_download_failed': "❌ Failed to download the Space",
     'space_summarization_failed': "❌ Failed to summarize space",
+    'general_error': "❌ An error occurred. Please try again later.",
+    'processing_error': "❌ Error processing your request.",
+    'ai_processing_error': "❌ Error in AI processing.",
+    'unauthorized': "❌ You are not authorized to use this command.",
+    'invalid_request': "❌ Invalid request format.",
+    'member_not_found': "❌ Member not found.",
+    'group_not_found': "❌ Group not found.",
 }
 
 # Success Messages
@@ -47,6 +55,12 @@ SUCCESS_MESSAGES = {
     'transaction_verified': "✅ Transaction verified successfully!",
     'space_download_started': "🔄 Space download initiated. This may take a few minutes.",
     'space_summarized': "✅ Space summarized successfully!",
+    'member_approved': "✅ Member approved successfully!",
+    'member_rejected': "✅ Member rejected.",
+    'group_added': "✅ Group added successfully!",
+    'group_removed': "✅ Group removed successfully!",
+    'knowledge_stored': "✅ Knowledge stored successfully!",
+    'request_submitted': "✅ Request submitted successfully!",
 }
 
 # Announcement Prefixes

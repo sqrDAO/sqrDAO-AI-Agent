@@ -5,8 +5,9 @@ import re
 from bs4 import BeautifulSoup
 from trafilatura import extract
 from utils.retry import with_retry, TransientError
-from config import ERROR_MESSAGES, SUCCESS_MESSAGES
+from config import ERROR_MESSAGES, SUCCESS_MESSAGES, SQR_TOKEN_MINT
 import json
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +49,40 @@ async def get_webpage_content(url: str) -> Optional[str]:
 async def resolve_sns_domain(domain: str) -> Optional[str]:
     """Resolve SNS domain to wallet address using httpx."""
     try:
+        # Remove .sol extension if present
+        domain = domain.lower().replace('.sol', '')
+        logger.info(f"Attempting to resolve SNS domain: {domain}")
+        
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(f"https://sns-api.bonfida.com/v2/resolve/{domain}")
+            url = f"https://sns-sdk-proxy.bonfida.workers.dev/resolve/{domain}"
+            logger.info(f"Making request to Bonfida API: {url}")
+            
+            response = await client.get(url)
+            logger.info(f"Bonfida API response status: {response.status_code}")
+            logger.info(f"Bonfida API response headers: {response.headers}")
+            
             response.raise_for_status()
             data = response.json()
-            return data.get('owner')
+            logger.info(f"Bonfida API response data: {data}")
+            
+            # Get the result field which contains the wallet address
+            result = data.get('result')
+            if result:
+                logger.info(f"Successfully resolved domain {domain} to address: {result}")
+            else:
+                logger.warning(f"No result found in response for domain {domain}")
+            
+            return result
     except httpx.HTTPError as e:
         logger.error(f"HTTP error resolving SNS domain {domain}: {str(e)}")
+        logger.error(f"Response status code: {e.response.status_code if hasattr(e, 'response') else 'N/A'}")
+        logger.error(f"Response headers: {e.response.headers if hasattr(e, 'response') else 'N/A'}")
+        logger.error(f"Response body: {e.response.text if hasattr(e, 'response') else 'N/A'}")
         raise TransientError(f"HTTP error: {str(e)}")
     except Exception as e:
         logger.error(f"Error resolving SNS domain {domain}: {str(e)}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Full error traceback: {traceback.format_exc()}")
         raise TransientError(f"Error resolving domain: {str(e)}")
 
 @with_retry(max_attempts=3)
@@ -66,7 +91,7 @@ async def get_sqr_info() -> Optional[dict]:
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
-                "https://api.geckoterminal.com/api/v2/networks/solana/tokens/SQR",
+                f"https://api.geckoterminal.com/api/v2/networks/solana/tokens/{SQR_TOKEN_MINT}",
                 headers={"Accept": "application/json"}
             )
             response.raise_for_status()
