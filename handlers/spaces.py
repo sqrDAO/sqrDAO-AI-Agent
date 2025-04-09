@@ -13,6 +13,7 @@ import traceback
 from gtts import gTTS
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
+from solders.signature import Signature
 from utils.retry import with_retry, TransientError, PermanentError
 from config import (
     TEXT_SUMMARY_COST,
@@ -57,13 +58,20 @@ def reset_user_data(context: ContextTypes.DEFAULT_TYPE) -> None:
     })
 
 async def check_transaction_status(signature: str, command_start_time: datetime, 
-                                 space_url: str = None, request_type: str = 'text') -> Tuple[bool, str, Optional[str]]:
+                                    space_url: str = None, request_type: str = 'text') -> Tuple[bool, str, Optional[str]]:
     """Check the status of a Solana transaction."""
     try:
         client = AsyncClient(SOLANA_RPC_URL, commitment=Commitment("confirmed"))
         
+        # Convert signature string to Signature object
+        try:
+            signature_obj = Signature.from_string(signature)
+        except Exception as e:
+            logger.error(f"Error converting signature format: {str(e)}")
+            return False, f"❌ Error converting signature format: {str(e)}", None
+
         # Check if transaction is confirmed
-        response = await client.get_signature_statuses([signature])
+        response = await client.get_signature_statuses([signature_obj])
         if not response.value[0]:
             return False, "Transaction not found", None
         
@@ -72,20 +80,84 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             return False, f"Transaction failed: {status.err}", None
         
         # Get transaction details
-        tx = await client.get_transaction(signature)
-        if not tx:
+        tx = await client.get_transaction(signature_obj)
+        if not tx or not tx.value:
             return False, "Could not get transaction details", None
         
-        # Check if transaction is to the correct recipient
-        for instruction in tx.transaction.message.instructions:
-            if instruction.program_id == TOKEN_PROGRAM_ID:
-                for account in instruction.accounts:
-                    if account.pubkey == RECIPIENT_WALLET:
-                        # Transaction is confirmed and correct
-                        return True, "Transaction confirmed", None
+        transaction_data = tx.value.transaction
+        meta = transaction_data.meta
         
-        return False, "Transaction not to correct recipient", None
+        # Check if transaction was successful
+        if not meta:
+            logger.error("No meta data found in transaction")
+            return False, "❌ No meta data found in transaction", None
+            
+        if meta.err:
+            logger.error(f"Transaction failed with error: {meta.err}")
+            return False, f"❌ Transaction failed: {meta.err}", None
+            
+        # Get block time from transaction
+        if not tx.value.block_time:
+            logger.error("No block time found in transaction")
+            return False, "❌ No block time found in transaction", None
+            
+        # Convert block time to datetime
+        transaction_time = datetime.fromtimestamp(tx.value.block_time)
         
+        # Check if transaction was completed within the 30-minute window
+        time_diff = transaction_time - command_start_time
+        
+        if time_diff < timedelta(0):
+            logger.warning("Transaction was completed before command was issued")
+            return False, "❌ Transaction was completed before the command was issued", None
+        elif time_diff > timedelta(minutes=30):
+            minutes_late = int((time_diff - timedelta(minutes=30)).total_seconds() / 60)
+            logger.warning(f"Transaction was completed {minutes_late} minutes after deadline")
+            return False, f"❌ Transaction was completed {minutes_late} minutes after the 30-minute window expired", None
+            
+        # Check token amount using pre and post token balances
+        try:
+            pre_balances = meta.pre_token_balances
+            post_balances = meta.post_token_balances
+            
+            if not pre_balances or not post_balances:
+                logger.error("No token balance information found in transaction")
+                return False, "❌ No token balance information found in transaction", None
+            
+            # Find the token transfer amount by comparing pre and post balances
+            transfer_amount = 0
+            target_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"
+            
+            for post_balance in post_balances:
+                if str(post_balance.mint) == target_mint:
+                    pre_balance = next(
+                        (pre for pre in pre_balances 
+                         if str(pre.mint) == target_mint and pre.account_index == post_balance.account_index),
+                        None
+                    )
+                    
+                    if pre_balance:
+                        pre_amount = float(pre_balance.ui_token_amount.ui_amount_string)
+                        post_amount = float(post_balance.ui_token_amount.ui_amount_string)
+                        transfer_amount = post_amount - pre_amount
+                        break
+            
+            required_amount = 2000 if request_type == 'audio' else 1000
+            
+            if transfer_amount <= 0:
+                logger.warning(f"Invalid transfer amount: {transfer_amount}")
+                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: {required_amount})", None
+                
+            if transfer_amount < required_amount:
+                logger.warning(f"Insufficient transfer amount: {transfer_amount}")
+                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: {required_amount})", None
+                
+        except Exception as e:
+            logger.error(f"Error checking token amount: {str(e)}")
+            return False, "❌ Error verifying token amount in transaction", None
+            
+        return True, "Transaction confirmed", None  # If all checks pass
+
     except Exception as e:
         logger.error(f"Error checking transaction: {str(e)}")
         return False, f"Error checking transaction: {str(e)}", None

@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+import google.generativeai as genai
+import traceback
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram import Update, Message
@@ -9,7 +11,7 @@ from telegram.constants import ParseMode
 # Import handlers from other modules
 from handlers.general import (
     start, help_command, about_command, website_command,
-    contact_command, events_command
+    contact_command, events_command, cancel_command
 )
 from handlers.member import (
     request_member, approve_member, reject_member,
@@ -56,6 +58,49 @@ load_dotenv()
 
 # Initialize database
 db = Database()
+
+# Initialize Gemini model with safety settings
+try:
+    generation_config = {
+        "temperature": 0.9,
+        "top_p": 1,
+        "top_k": 1,
+        "max_output_tokens": 2048,
+    }
+
+    safety_settings = [
+        {
+            "category": "HARM_CATEGORY_HARASSMENT",
+            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+            "category": "HARM_CATEGORY_HATE_SPEECH",
+            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+        },
+    ]
+
+    model = genai.GenerativeModel(
+        model_name='models/gemini-2.0-flash',
+        generation_config=generation_config,
+        safety_settings=safety_settings
+    )
+    
+    # Test the model with a simple prompt
+    test_response = model.generate_content("Hello")
+    logger.debug(f"Test response: {test_response.text if hasattr(test_response, 'text') else 'No text attribute'}")
+    
+except Exception as e:
+    logger.error(f"Error initializing or testing Gemini model: {str(e)}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    raise
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming messages."""
@@ -148,16 +193,39 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         logger.error(f"Error processing message: {str(e)}")
         return get_error_message('processing_error')
 
-async def process_message_with_context(message: str, context: str) -> str:
-    """Process message with context using the AI model."""
+def process_message_with_context(message, context):
+    # Prepare context for the model
+    context_text = ""
+    if context:
+        context_text = "Previous relevant conversations:\n"
+        for prev_msg, prev_resp, ctx in context:
+            context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
+    
+    # Get relevant knowledge
+    keywords = message.lower().split()
+    knowledge_text = ""
+    for keyword in keywords:
+        knowledge = db.get_knowledge(keyword)
+        if knowledge:
+            knowledge_text += "\nStored knowledge:\n"
+            for info in knowledge:
+                knowledge_text += f"• {info[0]}\n"
+    
+    # Combine context with current message and knowledge
+    prompt = f"{context_text}\n{knowledge_text}\nCurrent message: {message}\n\nPlease provide a response that takes into account both the context of previous conversations and the stored knowledge if relevant."
+    
     try:
-        # TODO: Implement AI model processing
-        # This is a placeholder for the actual AI processing logic
-        return "This is a placeholder response. AI processing not implemented yet."
-
+        # Generate response using Gemini
+        response = model.generate_content(prompt)
+        
+        if not hasattr(response, 'text') or not response.text:
+            return "I apologize, but I couldn't generate a response. Please try rephrasing your question."
+            
+        return response.text
+        
     except Exception as e:
-        logger.error(f"Error in AI processing: {str(e)}")
-        return get_error_message('ai_processing_error')
+        logger.error(f"Error generating response: {str(e)}")
+        return "I encountered an error while processing your message. Please try again."
 
 def main():
     """Main function to run the bot."""
@@ -213,6 +281,7 @@ def main():
         application.add_handler(CommandHandler("add_group", add_group))
         application.add_handler(CommandHandler("remove_group", remove_group))
         application.add_handler(CommandHandler("mass_message", mass_message))
+        application.add_handler(CommandHandler("cancel", cancel_command))
 
         # Add message handler
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
