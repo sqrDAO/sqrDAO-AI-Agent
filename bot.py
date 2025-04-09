@@ -352,12 +352,20 @@ async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Store the user ID in PENDING_REQUESTS instead of username
-    PENDING_REQUESTS[user.username] = {
-        'user_id': user_id,
-        'username': user.username,
-        'timestamp': datetime.now(),
-        'status': 'pending'
-    }
+    if user.username:
+        PENDING_REQUESTS[user.username] = {
+            'user_id': user_id,
+            'username': user.username,
+            'timestamp': datetime.now(),
+            'status': 'pending'
+        }
+    else:
+        PENDING_REQUESTS[f"@{user_id}"] = {  # Store user ID as username
+            'user_id': user_id,
+            'username': str(user_id),  # Use user ID as username
+            'timestamp': datetime.now(),
+            'status': 'pending'
+        }
 
     # Notify authorized members using user IDs
     for member_id in AUTHORIZED_MEMBERS:  # Ensure AUTHORIZED_MEMBERS contains user IDs
@@ -477,7 +485,7 @@ async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     requests_text = "<b>Pending Member Requests:</b>\n\n"
     for user_id, request in PENDING_REQUESTS.items():
-        requests_text += f"• @{request['username']} (Requested: {request['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})\n"
+        requests_text += f"• {request['username']} (Requested: {request['timestamp'].strftime('%Y-%m-%d %H:%M:%S')})\n"
     await update.message.reply_text(requests_text, parse_mode=ParseMode.HTML)
 
 # Configure API keys
