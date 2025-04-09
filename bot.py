@@ -1410,83 +1410,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        command_start_time = context.user_data.get('command_start_time')
-        space_url = context.user_data.get('space_url')
-        request_type = context.user_data.get('request_type', 'text')  # Default to 'text' if not set
-        
-        if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
-            await message.reply_text(
-                "❌ Time limit expired!\n"
-                "The 30-minute window for completing the transaction has passed.\n"
-                "Please use /summarize_space command again to start a new transaction.",
-                parse_mode=ParseMode.HTML
-            )
-            context.user_data['awaiting_signature'] = False
-            context.user_data['command_start_time'] = None
-            context.user_data['space_url'] = None
-            context.user_data['request_type'] = None
-            context.user_data['job_id'] = None
-            context.user_data['failed_attempts'] = 0
+        # Check if the transaction window has expired
+        if await check_transaction_window_expired(context, message):
             return
 
+        # Process the signature
         signature = message.text.strip()
+        await process_signature(signature, context, message)
         
-        is_successful, message_text, job_id = await check_transaction_status(signature, command_start_time, space_url, request_type)
-        
-        if is_successful:
-            # Send initial status message
-            status_message = await message.reply_text(
-                "✅ Transaction verified successfully!\n"
-                "Processing your request...\n"
-                "This can take up to 5-10 minutes.",
-                parse_mode=ParseMode.HTML
-            )
-            
-            # If we have a job ID, start periodic checking
-            if job_id:
-                # Store the job_id in user_data
-                context.user_data['job_id'] = job_id
-                # Start the periodic check in the background
-                asyncio.create_task(periodic_job_check(
-                    context=context,
-                    job_id=job_id,
-                    space_url=space_url,
-                    chat_id=message.chat_id,
-                    message_id=status_message.message_id,
-                    request_type=request_type
-                ))
-            else:
-                await message.reply_text(message_text, parse_mode=ParseMode.HTML)
-        else:
-            # Increment failed attempts counter
-            failed_attempts = context.user_data.get('failed_attempts', 0) + 1
-            context.user_data['failed_attempts'] = failed_attempts
-            
-            if failed_attempts >= 3:
-                await message.reply_text(
-                    "❌ Maximum number of failed attempts reached.\n"
-                    "Please use /summarize_space command again to start a new transaction.",
-                    parse_mode=ParseMode.HTML
-                )
-                context.user_data['awaiting_signature'] = False
-                context.user_data['command_start_time'] = None
-                context.user_data['space_url'] = None
-                context.user_data['request_type'] = None
-                context.user_data['job_id'] = None
-                context.user_data['failed_attempts'] = 0
-            else:
-                remaining_attempts = 3 - failed_attempts
-                required_amount = 2000 if request_type == 'audio' else 1000
-                await message.reply_text(
-                    f"{message_text}\n\n"
-                    f"Please ensure you:\n"
-                    f"1. Send exactly {required_amount} $SQR tokens\n"
-                    f"2. Complete the transaction within 30 minutes\n"
-                    f"3. Send the correct transaction signature\n\n"
-                    f"⚠️ You have {remaining_attempts} attempt{'s' if remaining_attempts > 1 else ''} remaining.",
-                    parse_mode=ParseMode.HTML
-                )
-
     except Exception as e:
         logger.error(f"Error handling message: {str(e)}")
         logger.error(f"Full error traceback: {traceback.format_exc()}")
@@ -1495,6 +1426,154 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "<i>I encountered an error while processing your message. Please try again.</i>",
                 parse_mode=ParseMode.HTML
             )
+
+async def check_transaction_window_expired(context: ContextTypes.DEFAULT_TYPE, message: telegram.Message) -> bool:
+    """Check if the transaction window has expired and handle accordingly.
+    
+    Args:
+        context: The context object
+        message: The message object
+        
+    Returns:
+        bool: True if the window has expired, False otherwise
+    """
+    command_start_time = context.user_data.get('command_start_time')
+    
+    if not command_start_time or (datetime.now() - command_start_time) > timedelta(minutes=30):
+        await message.reply_text(
+            "❌ Time limit expired!\n"
+            "The 30-minute window for completing the transaction has passed.\n"
+            "Please use /summarize_space command again to start a new transaction.",
+            parse_mode=ParseMode.HTML
+        )
+        reset_user_data(context)
+        return True
+    
+    return False
+
+def reset_user_data(context: ContextTypes.DEFAULT_TYPE):
+    """Reset user data related to space summarization.
+    
+    Args:
+        context: The context object
+    """
+    context.user_data['awaiting_signature'] = False
+    context.user_data['command_start_time'] = None
+    context.user_data['space_url'] = None
+    context.user_data['request_type'] = None
+    context.user_data['job_id'] = None
+    context.user_data['failed_attempts'] = 0
+
+async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, message: telegram.Message):
+    """Process a transaction signature for space summarization.
+    
+    Args:
+        signature: The transaction signature to process
+        context: The context object
+        message: The message object
+    """
+    command_start_time = context.user_data.get('command_start_time')
+    space_url = context.user_data.get('space_url')
+    request_type = context.user_data.get('request_type', 'text')  # Default to 'text' if not set
+    
+    is_successful, message_text, job_id = await check_transaction_status(signature, command_start_time, space_url, request_type)
+    
+    if is_successful:
+        await handle_successful_transaction(context, message, message_text, job_id, space_url, request_type)
+    else:
+        await handle_failed_transaction(context, message, message_text, request_type)
+
+async def handle_successful_transaction(context: ContextTypes.DEFAULT_TYPE, message: telegram.Message, 
+                                      message_text: str, job_id: Optional[str], space_url: str, request_type: str):
+    """Handle a successful transaction for space summarization.
+    
+    Args:
+        context: The context object
+        message: The message object
+        message_text: The message text to display
+        job_id: The job ID if available
+        space_url: The space URL
+        request_type: The type of request
+    """
+    # Send initial status message
+    status_message = await message.reply_text(
+        "✅ Transaction verified successfully!\n"
+        "Processing your request...\n"
+        "This can take up to 5-10 minutes.",
+        parse_mode=ParseMode.HTML
+    )
+    
+    # If we have a job ID, start periodic checking
+    if job_id:
+        # Store the job_id in user_data
+        context.user_data['job_id'] = job_id
+        # Start the periodic check in the background
+        asyncio.create_task(periodic_job_check(
+            context=context,
+            job_id=job_id,
+            space_url=space_url,
+            chat_id=message.chat_id,
+            message_id=status_message.message_id,
+            request_type=request_type
+        ))
+    else:
+        await message.reply_text(message_text, parse_mode=ParseMode.HTML)
+
+async def handle_failed_transaction(context: ContextTypes.DEFAULT_TYPE, message: telegram.Message, 
+                                  message_text: str, request_type: str):
+    """Handle a failed transaction for space summarization.
+    
+    Args:
+        context: The context object
+        message: The message object
+        message_text: The message text to display
+        request_type: The type of request
+    """
+    # Increment failed attempts counter
+    failed_attempts = context.user_data.get('failed_attempts', 0) + 1
+    context.user_data['failed_attempts'] = failed_attempts
+    
+    if failed_attempts >= 3:
+        await handle_max_failed_attempts(context, message)
+    else:
+        await handle_remaining_attempts(context, message, message_text, failed_attempts, request_type)
+
+async def handle_max_failed_attempts(context: ContextTypes.DEFAULT_TYPE, message: telegram.Message):
+    """Handle the case when maximum failed attempts are reached.
+    
+    Args:
+        context: The context object
+        message: The message object
+    """
+    await message.reply_text(
+        "❌ Maximum number of failed attempts reached.\n"
+        "Please use /summarize_space command again to start a new transaction.",
+        parse_mode=ParseMode.HTML
+    )
+    reset_user_data(context)
+
+async def handle_remaining_attempts(context: ContextTypes.DEFAULT_TYPE, message: telegram.Message, 
+                                 message_text: str, failed_attempts: int, request_type: str):
+    """Handle the case when there are still remaining attempts.
+    
+    Args:
+        context: The context object
+        message: The message object
+        message_text: The message text to display
+        failed_attempts: The number of failed attempts
+        request_type: The type of request
+    """
+    remaining_attempts = 3 - failed_attempts
+    required_amount = 2000 if request_type == 'audio' else 1000
+    await message.reply_text(
+        f"{message_text}\n\n"
+        f"Please ensure you:\n"
+        f"1. Send exactly {required_amount} $SQR tokens\n"
+        f"2. Complete the transaction within 30 minutes\n"
+        f"3. Send the correct transaction signature\n\n"
+        f"⚠️ You have {remaining_attempts} attempt{'s' if remaining_attempts > 1 else ''} remaining.",
+        parse_mode=ParseMode.HTML
+    )
 
 async def set_bot_commands(application):
     """Set bot commands with descriptions for the command menu."""
@@ -1620,6 +1699,7 @@ async def get_sqr_info_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"💎 Market Cap: {market_cap}\n\n"
                 "Data provided by GeckoTerminal\n\n"
                 "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n"
+                f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC"
             )
             
             await update.message.reply_text(message, parse_mode=ParseMode.HTML)
