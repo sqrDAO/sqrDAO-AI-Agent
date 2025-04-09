@@ -290,15 +290,9 @@ PENDING_REQUESTS = {}
 def is_member(func):
     """Check if user is an authorized member."""
     @functools.wraps(func)
+    @check_user_exists
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        if user is None:
-            await update.message.reply_text(
-                "⚠️ Unable to identify user. Please try again.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-            
         if user.username and find_authorized_member_by_username(user.username):
             return await func(update, context)
         else:
@@ -312,15 +306,9 @@ def is_member(func):
 def is_any_member(func):
     """Check if user is either an authorized member or regular member."""
     @functools.wraps(func)
+    @check_user_exists
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        if user is None:
-            await update.message.reply_text(
-                "⚠️ Unable to identify user. Please try again.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-            
         if user.username and (find_authorized_member_by_username(user.username) or find_member_by_username(user.username)):
             return await func(update, context)
         else:
@@ -331,16 +319,24 @@ def is_any_member(func):
             )
     return wrapper
 
+def check_user_exists(func):
+    """Decorator to check if user exists and handle None user scenario."""
+    @functools.wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        if user is None:
+            await update.message.reply_text(
+                "⚠️ Unable to identify user. Please try again.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        return await func(update, context)
+    return wrapper
+
+@check_user_exists
 async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /request_member command - Request to be added as a member."""
     user = update.effective_user
-    if user is None:
-        await update.message.reply_text(
-            "⚠️ Unable to identify user. Please try again.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-        
     user_id = user.id  # Get the user ID
 
     # Check if the user is already a member
@@ -385,7 +381,7 @@ async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-@is_member
+@check_user_exists
 async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /approve_member command - Approve a member request."""
     if not context.args:
@@ -433,7 +429,7 @@ async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-@is_member
+@check_user_exists
 async def reject_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /reject_member command - Reject a member request."""
     if not context.args:
@@ -473,7 +469,7 @@ async def reject_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-@is_member
+@check_user_exists
 async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /list_requests command - List pending member requests."""
     if not PENDING_REQUESTS:
@@ -1252,6 +1248,67 @@ async def periodic_job_check(context: ContextTypes.DEFAULT_TYPE, job_id: str, sp
         logger.error(f"Full error traceback: {traceback.format_exc()}")
     return False
 
+async def check_for_scammer(message: telegram.Message, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Check if message contains 'scammer' and handle it.
+    
+    Args:
+        message: The message to check
+        context: The context object
+        
+    Returns:
+        bool: True if 'scammer' was found and handled, False otherwise
+    """
+    if "scammer" in message.text.lower():
+        await message.reply_text("🚫 Rome wasn't built in one day! Building something meaningful takes time and dedication. Let's support our founders who are working hard to create value! 💪")
+        return True
+    return False
+
+async def handle_slash_command(message: telegram.Message, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Handle messages that start with a slash command.
+    
+    Args:
+        message: The message to check
+        context: The context object
+        
+    Returns:
+        bool: True if message was a slash command and was handled, False otherwise
+    """
+    if message.text.startswith('/'):
+        await message.reply_text(
+            "<i>Please use specific commands like /help, or send a regular message.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return True
+    return False
+
+async def process_message_with_context_and_reply(message: telegram.Message, context: ContextTypes.DEFAULT_TYPE, processed_text: str = None):
+    """Process a message with context and send a formatted reply.
+    
+    Args:
+        message: The original message
+        context: The context object
+        processed_text: Optional processed text (if None, uses message.text)
+    """
+    # Use provided processed text or original message text
+    text_to_process = processed_text if processed_text is not None else message.text
+    
+    # Get relevant context from previous conversations
+    relevant_context = db.get_relevant_context(message.from_user.id, text_to_process)
+    
+    # Process the message with context
+    response = process_message_with_context(text_to_process, relevant_context)
+    
+    # Store the conversation
+    db.store_conversation(message.from_user.id, text_to_process, response)
+    
+    # Format and send response with HTML formatting
+    formatted_text = format_response_for_telegram(response)
+    
+    await message.reply_text(
+        formatted_text,
+        parse_mode=ParseMode.HTML
+    )
+
 async def handle_group_message(message: telegram.Message, context: ContextTypes.DEFAULT_TYPE):
     """Handle messages in group chats."""
     # Skip if we're awaiting a signature for space summarization
@@ -1259,16 +1316,11 @@ async def handle_group_message(message: telegram.Message, context: ContextTypes.
         return
         
     # Check for scammer accusations in group chats
-    if "scammer" in message.text.lower():
-        await message.reply_text("🚫 Rome wasn't built in one day! Building something meaningful takes time and dedication. Let's support our founders who are working hard to create value! 💪")
+    if await check_for_scammer(message, context):
         return
     
     # Check if the message is a command
-    if message.text.startswith('/'):
-        await message.reply_text(
-            "<i>Please use specific commands like /help, or send a regular message.</i>",
-            parse_mode=ParseMode.HTML
-        )
+    if await handle_slash_command(message, context):
         return
     
     # For group chats, only respond if the bot is mentioned
@@ -1283,22 +1335,8 @@ async def handle_group_message(message: telegram.Message, context: ContextTypes.
             )
             return
         
-        # Get relevant context from previous conversations
-        relevant_context = db.get_relevant_context(message.from_user.id, processed_text)
-        
-        # Process the message with context
-        response = process_message_with_context(processed_text, relevant_context)
-        
-        # Store the conversation
-        db.store_conversation(message.from_user.id, processed_text, response)
-        
-        # Format and send response with HTML formatting
-        formatted_text = format_response_for_telegram(response)
-        
-        await message.reply_text(
-            formatted_text,
-            parse_mode=ParseMode.HTML
-        )
+        # Process the message with context and send reply
+        await process_message_with_context_and_reply(message, context, processed_text)
 
 async def handle_private_message(message: telegram.Message, context: ContextTypes.DEFAULT_TYPE):
     """Handle messages in private chats."""
@@ -1307,16 +1345,11 @@ async def handle_private_message(message: telegram.Message, context: ContextType
         return
         
     # Check for scammer accusations in private chats
-    if "scammer" in message.text.lower():
-        await message.reply_text("🚫 Rome wasn't built in one day! Building something meaningful takes time and dedication. Let's support our founders who are working hard to create value! 💪")
+    if await check_for_scammer(message, context):
         return
 
     # Check if the message is a command
-    if message.text.startswith('/'):
-        await message.reply_text(
-            "<i>Please use specific commands like /help, or send a regular message.</i>",
-            parse_mode=ParseMode.HTML
-        )
+    if await handle_slash_command(message, context):
         return
 
     # Check if this is a template request
@@ -1343,22 +1376,8 @@ async def handle_private_message(message: telegram.Message, context: ContextType
             return
     
     try:
-        # Get relevant context from previous conversations
-        relevant_context = db.get_relevant_context(message.from_user.id, message.text)
-        
-        # Process the message with context
-        response = process_message_with_context(message.text, relevant_context)
-        
-        # Store the conversation
-        db.store_conversation(message.from_user.id, message.text, response)
-        
-        # Format and send response with HTML formatting
-        formatted_text = format_response_for_telegram(response)
-        
-        await message.reply_text(
-            formatted_text,
-            parse_mode=ParseMode.HTML
-        )
+        # Process the message with context and send reply
+        await process_message_with_context_and_reply(message, context)
         
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
@@ -2561,6 +2580,18 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
+async def handle_group_message_wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Wrapper function to handle group messages.
+    
+    This function is used as a handler for group messages, calling handle_group_message
+    with the appropriate parameters.
+    
+    Args:
+        update: The update object from Telegram
+        context: The context object
+    """
+    await handle_group_message(update.message, context)
+    
 def main():
     """Start the bot."""
     try:
@@ -2614,7 +2645,7 @@ def main():
         # Specific handlers for group messages only (private messages are handled by handle_message)
         application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, 
-            lambda update, context: handle_group_message(update.message, context)
+            handle_group_message_wrapper
         ))
         
         # Handler for group status updates
