@@ -2315,7 +2315,7 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send confirmation to the sender
     group_type_msg = " (sqrDAO groups only)" if grouptype == "sqrdao" else " (Summit groups only)" if grouptype == "summit" else " (sqrFUND groups only)" if grouptype == "sqrfund" else " (All groups)"
     await update.message.reply_text(
-        f"📤 Starting to send {'image' if media and update.message.photo else 'video' if media and update.message.video else 'document' if media and update.message.document else 'message'} to {len(valid_users)} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
+        f"📤 Starting to send {'image' if media and update.message.photo else 'video' if media and update.message.video else 'document' if media and update.message.document else 'message'} to {len(valid_users) if not grouptype else 0} users and {len(filtered_groups)} groups/channels{group_type_msg}...",
         parse_mode=ParseMode.HTML
     )
     
@@ -2326,6 +2326,48 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_failure_count = 0
     failed_users = []
     failed_groups = []
+
+    # Only send to users if no grouptype is specified
+    if not grouptype:
+        for user in valid_users:
+            try:
+                if media:
+                    # Send media (image, video, or document) with caption
+                    formatted_caption = f"{message}" if message else None
+                    if update.message.photo:
+                        await context.bot.send_photo(
+                            chat_id=user['user_id'],
+                            photo=media,
+                            caption=formatted_caption,
+                            parse_mode=ParseMode.HTML if formatted_caption else None
+                        )
+                    elif update.message.video:
+                        await context.bot.send_video(
+                            chat_id=user['user_id'],
+                            video=media,
+                            caption=formatted_caption,
+                            parse_mode=ParseMode.HTML if formatted_caption else None
+                        )
+                    elif update.message.document:
+                        await context.bot.send_document(
+                            chat_id=user['user_id'],
+                            document=media,
+                            caption=formatted_caption,
+                            parse_mode=ParseMode.HTML if formatted_caption else None
+                        )
+                else:
+                    # Send text message
+                    await context.bot.send_message(
+                        chat_id=user['user_id'],
+                        text=message,
+                        parse_mode=ParseMode.HTML
+                    )
+                user_success_count += 1
+                
+            except Exception as e:
+                user_failure_count += 1
+                failed_users.append(f"@{user['username']}")
+                logger.error(f"Failed to send to user @{user['username']}: {str(e)}")
 
     for group in filtered_groups:
         try:
