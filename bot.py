@@ -352,7 +352,7 @@ async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Store the user ID in PENDING_REQUESTS instead of username
-    if user.username:
+    if user.username or user.username == "@None":
         PENDING_REQUESTS[user.username] = {
             'user_id': user_id,
             'username': user.username,
