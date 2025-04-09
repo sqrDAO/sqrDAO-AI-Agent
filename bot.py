@@ -2375,8 +2375,10 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Determine announcement format based on grouptype
                 if grouptype in ["sqrdao", "summit", ""]:
                     announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
-                else:
+                elif grouptype == "sqrfund":
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
+                else:
+                    announcement_prefix = "📢 <b>Announcement:</b>"
                 
                 # Send media (image, video, or document) with caption
                 formatted_caption = f"{announcement_prefix}\n\n{message}" if message else None
@@ -2405,8 +2407,10 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Determine announcement format based on grouptype
                 if grouptype in ["sqrdao", "summit", ""]:
                     announcement_prefix = "📢 <b>Announcement from sqrDAO:</b>"
-                else:
+                elif grouptype == "sqrfund":
                     announcement_prefix = "📢 <b>Announcement from sqrFUND:</b>"
+                else:
+                    announcement_prefix = "📢 <b>Announcement:</b>"
                 
                 # Send text message
                 await context.bot.send_message(
