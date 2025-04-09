@@ -40,7 +40,8 @@ from utils.utils import (
 
 # Import config
 from config import (
-    TELEGRAM_BOT_TOKEN, ERROR_MESSAGES, SUCCESS_MESSAGES
+    TELEGRAM_BOT_TOKEN, ERROR_MESSAGES, SUCCESS_MESSAGES,
+    DocumentWithMassMessageCaption
 )
 
 # Configure logging
@@ -215,6 +216,21 @@ def main():
 
         # Add message handler
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+        # Add handler for photos with mass_message command in caption
+        application.add_handler(MessageHandler(
+            filters.PHOTO & filters.CaptionRegex(r'^/mass_message'), mass_message
+        ))
+
+        # Add handler for videos with mass_message command in caption
+        application.add_handler(MessageHandler(
+            filters.VIDEO & filters.CaptionRegex(r'^/mass_message'), mass_message
+        ))
+
+        # Add handler for documents with mass_message command in caption using custom filter
+        application.add_handler(MessageHandler(
+            DocumentWithMassMessageCaption(), mass_message
+        ))
 
         # Set bot commands
         commands = [

@@ -51,19 +51,13 @@ async def resolve_sns_domain(domain: str) -> Optional[str]:
     try:
         # Remove .sol extension if present
         domain = domain.lower().replace('.sol', '')
-        logger.info(f"Attempting to resolve SNS domain: {domain}")
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             url = f"https://sns-sdk-proxy.bonfida.workers.dev/resolve/{domain}"
-            logger.info(f"Making request to Bonfida API: {url}")
             
             response = await client.get(url)
-            logger.info(f"Bonfida API response status: {response.status_code}")
-            logger.info(f"Bonfida API response headers: {response.headers}")
-            
             response.raise_for_status()
             data = response.json()
-            logger.info(f"Bonfida API response data: {data}")
             
             # Get the result field which contains the wallet address
             result = data.get('result')
@@ -110,21 +104,41 @@ def escape_markdown_v2(text: str) -> str:
         text = text.replace(char, f'\\{char}')
     return text
 
-def get_announcement_prefix(grouptype: str) -> str:
+def get_announcement_prefix(grouptype: Optional[str]) -> str:
     """Get announcement prefix based on group type."""
+    if not grouptype:
+        return '🔔 <b>Announcement:</b>'
+        
     prefixes = {
-        'sqrdao': '🔔 sqrDAO Announcement:\n\n',
-        'sqrfund': '🔔 sqrFUND Announcement:\n\n',
-        'both': '🔔 sqrDAO & sqrFUND Announcement:\n\n'
+        'sqrdao': '🔔 <b>sqrDAO Announcement:</b>',
+        'sqrfund': '🔔 <b>sqrFUND Announcement:</b>',
+        'both': '🔔 <b>sqrDAO & sqrFUND Announcement:</b>'
     }
-    return prefixes.get(grouptype.lower(), '🔔 Announcement:\n\n')
+    return prefixes.get(grouptype.lower(), '🔔 <b>Announcement:</b>')
 
 def parse_mass_message_input(raw_input: str) -> tuple[str, Optional[str]]:
-    """Parse input for mass messages."""
-    parts = raw_input.split(' ', 1)
-    if len(parts) != 2:
-        return raw_input, None
-    return parts[1], parts[0]
+    """Parse input for mass messages.
+    
+    Args:
+        raw_input: The input string to parse, expected format: "message | grouptype"
+        
+    Returns:
+        tuple[str, Optional[str]]: A tuple containing (message, grouptype)
+    """
+    # Split by the pipe character to separate message and grouptype
+    parts = raw_input.split('|', 1)
+    
+    if len(parts) == 2:
+        # If we have both parts, strip whitespace and return
+        message = parts[0].strip()
+        grouptype = parts[1].strip().lower()
+        # Validate grouptype
+        if grouptype not in ['sqrdao', 'sqrfund', 'summit', 'both']:
+            grouptype = None
+        return message, grouptype
+    else:
+        # If no pipe found, return the whole input as message with no grouptype
+        return raw_input.strip(), None
 
 def get_error_message(key: str) -> str:
     """Get formatted error message."""

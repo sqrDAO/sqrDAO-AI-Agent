@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from telegram.ext.filters import BaseFilter
 
 # Load environment variables
 load_dotenv()
@@ -69,4 +70,13 @@ ANNOUNCEMENT_PREFIXES = {
     'summit': "📢 <b>Announcement from sqrDAO:</b>",
     'sqrfund': "📢 <b>Announcement from sqrFUND:</b>",
     'default': "📢 <b>Announcement:</b>"
-} 
+}
+
+class DocumentWithMassMessageCaption(BaseFilter):
+    def filter(self, message):
+        # Check if it's a document AND has a caption starting with /mass_message
+        return bool(
+            message.document and
+            message.caption and
+            message.caption.startswith('/mass_message')
+        )

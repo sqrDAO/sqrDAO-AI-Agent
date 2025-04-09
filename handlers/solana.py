@@ -54,13 +54,11 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             # Remove .sol extension if present for the API call
             domain = input_address.lower().replace('.sol', '')
-            logger.info(f"Attempting to resolve SNS domain: {domain}")
             
             resolved_address = await resolve_sns_domain(domain)
             if resolved_address:
                 wallet_address = resolved_address
                 display_address = f"{input_address} ({wallet_address[:4]}...{wallet_address[-4:]})"
-                logger.info(f"Successfully resolved domain to address: {wallet_address}")
             else:
                 logger.warning(f"SNS domain not found: {input_address}")
                 await update.message.reply_text(
@@ -104,24 +102,17 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Validate addresses
         try:
-            logger.info(f"Attempting to validate wallet address: {wallet_address}")
-            logger.info(f"Attempting to validate token program ID: {TOKEN_PROGRAM_ID}")
-            logger.info(f"Attempting to validate token mint: {token_mint}")
-            
             # Decode base58 addresses to bytes
             wallet_bytes = b58decode(wallet_address)
             token_program_bytes = b58decode(TOKEN_PROGRAM_ID)
             token_mint_bytes = b58decode(token_mint)
             
             wallet_pubkey = Pubkey.from_bytes(wallet_bytes)
-            logger.info(f"Successfully created wallet pubkey: {wallet_pubkey}")
             
             token_program_id = Pubkey.from_bytes(token_program_bytes)
-            logger.info(f"Successfully created token program pubkey: {token_program_id}")
             
             # Create a dummy keypair as payer since we're only reading data
             dummy_payer = Keypair()
-            logger.info("Created dummy payer keypair")
             
             # Initialize token client with program ID and payer
             token = Token(
