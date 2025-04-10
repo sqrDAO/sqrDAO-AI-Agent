@@ -69,9 +69,7 @@ async def resolve_sns_domain(domain: str) -> Optional[str]:
             
             # Get the result field which contains the wallet address
             result = data.get('result')
-            if result:
-                logger.info(f"Successfully resolved domain {domain} to address: {result}")
-            else:
+            if not result:
                 logger.warning(f"No result found in response for domain {domain}")
             
             return result

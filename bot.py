@@ -93,10 +93,6 @@ try:
         safety_settings=safety_settings
     )
     
-    # Test the model with a simple prompt
-    test_response = model.generate_content("Hello")
-    logger.info(f"Test response: {test_response.text if hasattr(test_response, 'text') else 'No text attribute'}")
-    
 except Exception as e:
     logger.error(f"Error initializing or testing Gemini model: {str(e)}")
     logger.error(f"Traceback: {traceback.format_exc()}")
@@ -176,7 +172,6 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
     try:
         # Get relevant context from previous conversations
         context_messages = db.get_relevant_context(message.from_user.id, message.text)
-        logger.info(f"Context messages: {context_messages}")  # Log the context messages
         
         # Prepare context for the model
         context_text = "\n".join([f"Previous: {msg[0]}\nResponse: {msg[1]}" for msg in context_messages if len(msg) == 2])

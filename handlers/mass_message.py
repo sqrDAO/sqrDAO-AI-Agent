@@ -15,14 +15,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
         return
 
-    logger.info("Mass message command received")
-    logger.info(f"Update message: {update.message}")
-    logger.info(f"Message has photo: {bool(update.message.photo) if update.message else False}")
-    logger.info(f"Message has video: {bool(update.message.video) if update.message else False}")
-    logger.info(f"Message has document: {bool(update.message.document) if update.message else False}")
-    logger.info(f"Message text: {update.message.text if update.message else None}")
-    logger.info(f"Command arguments: {context.args}")
-
     # Initialize variables
     media = None
     caption = None
@@ -39,12 +31,10 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media = update.message.document.file_id
         
         caption = update.message.caption if update.message.caption else ""
-        logger.info(f"Caption: {caption}")
         
         # Extract message and grouptype from caption if it contains the command
         if caption and caption.startswith('/mass_message'):
             message, grouptype = parse_mass_message_input(caption.replace('/mass_message', '', 1))
-            logger.info(f"Message: {message}, Grouptype: {grouptype}")
         else:
             message = caption
 
@@ -112,8 +102,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_failure_count = 0
     failed_users = []
     failed_groups = []
-
-    logger.info(f"Sending message to {len(valid_users)} users and {grouptype} groups/channels")
 
     # Only send to users if no grouptype is specified
     if not grouptype:

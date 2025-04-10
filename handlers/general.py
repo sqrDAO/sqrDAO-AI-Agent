@@ -171,15 +171,11 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def find_authorized_member_by_username(username: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[dict]:
     """Find an authorized member by username."""
-    logger.info(f"Searching for authorized member: {username}")
     
     authorized_members = context.bot_data.get('authorized_members', [])
-    logger.info(f"Authorized members loaded: {authorized_members}")
 
     for member in authorized_members:
-        logger.info(f"Checking member: {member['username']}")
         if member['username'] == username:
-            logger.info(f"Authorized member found: {member}")
             return member
     
     logger.warning(f"Authorized member not found for username: {username}")
