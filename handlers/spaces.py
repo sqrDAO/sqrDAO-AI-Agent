@@ -336,11 +336,23 @@ async def periodic_job_check(
                     await context.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=f"✅ Summary completed!\n\n{result}",
+                        text=f"✅ Summary completed!\n\n{result}\n\n"
+                             "If you would like to make suggestions or edits, use the command /edit_summary.",
                         parse_mode=ParseMode.HTML
                     )
                 reset_user_data(context)
                 return
+            
+            # Check for 502 error
+            if result.startswith("⚠️ <b>Summarization Service Temporarily Unavailable</b>"):
+                logger.error("Received 502 Server Error during summarization")
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=result,  # Send the error message to the user
+                    parse_mode=ParseMode.HTML
+                )
+                return  # Exit the function after sending the message
             
             # Check if we've exceeded the total time limit
             if datetime.now() - start_time > timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES):
@@ -542,4 +554,59 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ An unexpected error occurred. Please try again later.",
             parse_mode=ParseMode.HTML
         )
-        reset_user_data(context) 
+        reset_user_data(context)
+
+async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /edit_summary command to allow users to suggest edits."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide the content for the summary edit.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    custom_prompt = " ".join(context.args)  # Join the arguments to form the custom prompt
+    space_url = context.user_data.get('space_url')
+
+    if not space_url:
+        await update.message.reply_text(
+            "❌ No space URL found. Please summarize a space first.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Extract the space ID from the URL
+    space_id = space_url.split('/')[-1]  # Assuming the URL ends with the space ID
+
+    # Make the API call to summarize with the custom prompt
+    api_key = os.getenv('SQR_FUND_API_KEY')
+    if not api_key:
+        await update.message.reply_text(
+            "❌ API key not configured. Please contact support.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    api_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": api_key
+    }
+    payload = {
+        "spacesUrl": f"https://x.com/i/spaces/{space_id}",
+        "customPrompt": custom_prompt
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(api_url, headers=headers, json=payload)
+        if response.status_code == 200:
+            summary_data = response.json()
+            await update.message.reply_text(
+                f"✅ Edited Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ Failed to edit summary: {response.text}",
+                parse_mode=ParseMode.HTML
+            ) 

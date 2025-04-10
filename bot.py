@@ -26,7 +26,7 @@ from handlers.solana import (
     check_balance, sqr_info
 )
 from handlers.spaces import (
-    summarize_space
+    summarize_space, edit_summary
 )
 from handlers.mass_message import mass_message
 from handlers.spaces import process_signature
@@ -280,6 +280,7 @@ def main():
         application.add_handler(CommandHandler("remove_group", remove_group))
         application.add_handler(CommandHandler("mass_message", mass_message))
         application.add_handler(CommandHandler("cancel", cancel_command))
+        application.add_handler(CommandHandler("edit_summary", edit_summary))
 
         # Add message handler
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
