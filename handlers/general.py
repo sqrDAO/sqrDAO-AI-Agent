@@ -3,7 +3,6 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from typing import Optional
 import logging
-from utils.utils import format_response_for_telegram
 from config import ERROR_MESSAGES, SUCCESS_MESSAGES
 
 logger = logging.getLogger(__name__)
@@ -171,9 +170,18 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def find_authorized_member_by_username(username: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[dict]:
     """Find an authorized member by username."""
-    for member in context.bot_data['authorized_members']:
+    logger.info(f"Searching for authorized member: {username}")
+    
+    authorized_members = context.bot_data.get('authorized_members', [])
+    logger.info(f"Authorized members loaded: {authorized_members}")
+
+    for member in authorized_members:
+        logger.info(f"Checking member: {member['username']}")
         if member['username'] == username:
+            logger.info(f"Authorized member found: {member}")
             return member
+    
+    logger.warning(f"Authorized member not found for username: {username}")
     return None
 
 def find_member_by_username(username: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[dict]:

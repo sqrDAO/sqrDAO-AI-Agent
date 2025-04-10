@@ -11,9 +11,17 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
-def format_response_for_telegram(text: str) -> str:
-    """Format text to be compatible with Telegram's HTML."""
-    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
+    """Format text to be compatible with Telegram's HTML or Markdown."""
+    if parse_mode == 'HTML':
+        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    elif parse_mode == 'MARKDOWN_V2':
+        # Escape Markdown special characters
+        special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+        for char in special_chars:
+            text = text.replace(char, f'\\{char}')
+        return text
+    return text  # Return unmodified text if parse mode is not recognized
 
 def extract_urls(text: str) -> List[str]:
     """Extract URLs from text using regex."""
@@ -151,10 +159,10 @@ def get_success_message(key: str) -> str:
 def load_authorized_members(db):
     """Load authorized members from config.json if not found in database."""
     try:
-        # Try to load from database first
-        authorized_data = db.get_knowledge("authorized_members")
-        if authorized_data and authorized_data[0]:
-            return authorized_data[0]
+        # # Try to load from database first
+        # authorized_data = db.get_knowledge("authorized_members")
+        # if authorized_data and authorized_data[0]:
+        #     return authorized_data[0]
         
         # If not in database, load from config.json
         with open('config.json', 'r') as f:

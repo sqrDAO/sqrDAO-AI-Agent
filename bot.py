@@ -95,7 +95,7 @@ try:
     
     # Test the model with a simple prompt
     test_response = model.generate_content("Hello")
-    logger.debug(f"Test response: {test_response.text if hasattr(test_response, 'text') else 'No text attribute'}")
+    logger.info(f"Test response: {test_response.text if hasattr(test_response, 'text') else 'No text attribute'}")
     
 except Exception as e:
     logger.error(f"Error initializing or testing Gemini model: {str(e)}")
@@ -134,8 +134,8 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
         response = await process_message_with_context_and_reply(message, context)
         if response:
             await message.reply_text(
-                format_response_for_telegram(response),
-                parse_mode=ParseMode.HTML
+                format_response_for_telegram(response, 'MARKDOWN_V2'),
+                parse_mode=ParseMode.MARKDOWN_V2
             )
 
     except Exception as e:
@@ -156,8 +156,8 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
         response = await process_message_with_context_and_reply(message, context)
         if response:
             await message.reply_text(
-                format_response_for_telegram(response),
-                parse_mode=ParseMode.HTML
+                format_response_for_telegram(response, 'MARKDOWN_V2'),
+                parse_mode=ParseMode.MARKDOWN_V2
             )
 
     except Exception as e:
@@ -172,9 +172,10 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
     try:
         # Get relevant context from previous conversations
         context_messages = db.get_relevant_context(message.from_user.id, message.text)
+        logger.info(f"Context messages: {context_messages}")  # Log the context messages
         
         # Prepare context for the model
-        context_text = "\n".join([f"Previous: {msg[0]}\nResponse: {msg[1]}" for msg in context_messages])
+        context_text = "\n".join([f"Previous: {msg[0]}\nResponse: {msg[1]}" for msg in context_messages if len(msg) == 2])
         
         # Process message with context
         response = await process_message_with_context(message.text, context_text)
@@ -193,13 +194,17 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         logger.error(f"Error processing message: {str(e)}")
         return get_error_message('processing_error')
 
-def process_message_with_context(message, context):
+async def process_message_with_context(message, context):
     # Prepare context for the model
     context_text = ""
     if context:
         context_text = "Previous relevant conversations:\n"
-        for prev_msg, prev_resp, ctx in context:
-            context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
+        for entry in context:
+            if len(entry) == 3:  # Ensure there are 3 elements to unpack
+                prev_msg, prev_resp, ctx = entry
+                context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
+            else:
+                logger.warning("Unexpected context format, skipping entry.")
     
     # Get relevant knowledge
     keywords = message.lower().split()

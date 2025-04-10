@@ -5,8 +5,8 @@ from typing import Optional
 import logging
 from datetime import datetime
 import json
-from utils.utils import format_response_for_telegram
 from config import ERROR_MESSAGES, SUCCESS_MESSAGES
+from handlers.general import find_authorized_member_by_username, find_member_by_username
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,10 @@ async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /approve_member command - Approve a member request."""
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
     if not context.args:
         await update.message.reply_text(
             "❌ Please specify the username to approve.\n"
@@ -112,6 +116,10 @@ async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reject_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /reject_member command - Reject a member request."""
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
     if not context.args:
         await update.message.reply_text(
             "❌ Please specify the username to reject.\n"
@@ -151,6 +159,10 @@ async def reject_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /list_requests command - List pending member requests."""
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
     if not context.bot_data['pending_requests']:
         await update.message.reply_text(
             "📝 No pending member requests.",
@@ -165,42 +177,39 @@ async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(requests_text, parse_mode=ParseMode.HTML)
 
 async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /list_members command - List all members."""
-    try:
-        if not context.bot_data.get('members'):
-            await update.message.reply_text(
-                "📝 No members found.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-        
-        members_text = "<b>Current Members:</b>\n\n"
-        for member in context.bot_data['members']:
-            try:
-                # Handle dictionary format
-                if isinstance(member, dict):
-                    username = member.get('username', 'Unknown')
-                    user_id = member.get('user_id', 'Unknown')
-                # Handle list/tuple format
-                elif isinstance(member, (list, tuple)) and len(member) >= 2:
-                    username = member[0]
-                    user_id = member[1]
-                else:
-                    logger.error(f"Invalid member data format: {member}")
-                    continue
-                
-                members_text += f"• @{username} (User ID: {user_id})\n"
-            except Exception as e:
-                logger.error(f"Error formatting member data: {str(e)}")
-                continue
-        
-        await update.message.reply_text(members_text, parse_mode=ParseMode.HTML)
-    except Exception as e:
-        logger.error(f"Error in list_members: {str(e)}")
+    """Handle /list_members command - List all current members."""
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
+    if not context.bot_data['members']:
         await update.message.reply_text(
-            "❌ An error occurred while listing members. Please try again later.",
+            "📝 No members found.",
             parse_mode=ParseMode.HTML
         )
+        return
+        
+    members_text = "<b>Current Members:</b>\n\n"
+    for member in context.bot_data['members']:
+        try:
+            # Handle dictionary format
+            if isinstance(member, dict):
+                username = member.get('username', 'Unknown')
+                user_id = member.get('user_id', 'Unknown')
+            # Handle list/tuple format
+            elif isinstance(member, (list, tuple)) and len(member) >= 2:
+                username = member[0]
+                user_id = member[1]
+            else:
+                logger.error(f"Invalid member data format: {member}")
+                continue
+            
+            members_text += f"• @{username} (User ID: {user_id})\n"
+        except Exception as e:
+            logger.error(f"Error formatting member data: {str(e)}")
+            continue
+    
+    await update.message.reply_text(members_text, parse_mode=ParseMode.HTML)
 
 async def resources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /resources command - Available to all members."""
@@ -221,55 +230,56 @@ For access issues, please contact @DarthCastelian.
 
 async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /list_groups command - List all tracked groups."""
-    try:
-        if not context.bot_data.get('group_members'):
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
+    if not context.bot_data['group_members']:
+        await update.message.reply_text(
+            "📝 No groups are currently being tracked.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+        
+    groups_text = "<b>Tracked Groups:</b>\n\n"
+    groups = context.bot_data['group_members']
+    
+    # Handle case where groups is a list of dictionaries or a single list
+    if isinstance(groups, list):
+        if not groups:
             await update.message.reply_text(
                 "📝 No groups are currently being tracked.",
                 parse_mode=ParseMode.HTML
             )
             return
-        
-        groups_text = "<b>Tracked Groups:</b>\n\n"
-        groups = context.bot_data['group_members']
-        
-        # Handle case where groups is a list of dictionaries or a single list
-        if isinstance(groups, list):
-            if not groups:
-                await update.message.reply_text(
-                    "📝 No groups are currently being tracked.",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-                
-            # If first item is a dictionary, treat as list of dictionaries
-            if isinstance(groups[0], dict):
-                for group in groups:
-                    # Check for title field which is used in the database
-                    group_name = group.get('title', group.get('name', 'Unknown'))
-                    group_id = group.get('id', 'Unknown')
-                    groups_text += f"• {group_name} (ID: {group_id})\n"
-            # If first item is a list/tuple, treat as list of lists/tuples
-            elif isinstance(groups[0], (list, tuple)):
-                for group in groups:
-                    if len(group) >= 2:
-                        groups_text += f"• {group[0]} (ID: {group[1]})\n"
-                    else:
-                        groups_text += f"• Unknown Group (Invalid format)\n"
-            else:
-                groups_text += f"• Unknown Group (Invalid format)\n"
+            
+        # If first item is a dictionary, treat as list of dictionaries
+        if isinstance(groups[0], dict):
+            for group in groups:
+                # Check for title field which is used in the database
+                group_name = group.get('title', group.get('name', 'Unknown'))
+                group_id = group.get('id', 'Unknown')
+                groups_text += f"• {group_name} (ID: {group_id})\n"
+        # If first item is a list/tuple, treat as list of lists/tuples
+        elif isinstance(groups[0], (list, tuple)):
+            for group in groups:
+                if len(group) >= 2:
+                    groups_text += f"• {group[0]} (ID: {group[1]})\n"
+                else:
+                    groups_text += f"• Unknown Group (Invalid format)\n"
         else:
             groups_text += f"• Unknown Group (Invalid format)\n"
-        
-        await update.message.reply_text(groups_text, parse_mode=ParseMode.HTML)
-    except Exception as e:
-        logger.error(f"Error in list_groups: {str(e)}")
-        await update.message.reply_text(
-            "❌ An error occurred while listing groups. Please try again later.",
-            parse_mode=ParseMode.HTML
-        )
+    else:
+        groups_text += f"• Unknown Group (Invalid format)\n"
+    
+    await update.message.reply_text(groups_text, parse_mode=ParseMode.HTML)
 
 async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /add_group command - Add a group to tracking list."""
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
     if not context.args:
         await update.message.reply_text(
             "❌ Please provide a group ID.\n"
@@ -310,6 +320,10 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /remove_group command - Remove a group from tracking list."""
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
     if not context.args:
         await update.message.reply_text(
             "❌ Please provide a group ID.\n"
@@ -341,18 +355,4 @@ async def remove_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "❌ Group not found in tracking list.",
         parse_mode=ParseMode.HTML
-    )
-
-def find_authorized_member_by_username(username: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[dict]:
-    """Find an authorized member by username."""
-    for member in context.bot_data['authorized_members']:
-        if member['username'] == username:
-            return member
-    return None
-
-def find_member_by_username(username: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[dict]:
-    """Find a regular member by username."""
-    for member in context.bot_data['members']:
-        if member['username'] == username:
-            return member
-    return None 
+    ) 

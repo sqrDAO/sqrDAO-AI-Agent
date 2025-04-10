@@ -5,13 +5,18 @@ import logging
 from typing import Optional
 import csv
 import io
-from utils.utils import format_response_for_telegram, get_webpage_content
+from utils.utils import get_webpage_content
+from handlers.general import find_authorized_member_by_username
 from config import ERROR_MESSAGES, SUCCESS_MESSAGES
 
 logger = logging.getLogger(__name__)
 
 async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /learn command - Add information to the bot's knowledge base."""
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
     if not context.args:
         await update.message.reply_text(
             "❌ Please provide the information to learn.\n"
@@ -52,6 +57,10 @@ async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bulk_learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /bulk_learn command - Add multiple entries from CSV file."""
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
     if not update.message.document:
         await update.message.reply_text(
             "❌ Please send a CSV file with the following format:\n"
@@ -112,6 +121,10 @@ async def bulk_learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /learn_from_url command - Learn from a web page."""
+    if not find_authorized_member_by_username(update.effective_user['username'], context):
+        await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
+        return
+
     if not context.args:
         await update.message.reply_text(
             "❌ Please provide a URL.\n"

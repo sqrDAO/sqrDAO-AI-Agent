@@ -13,7 +13,7 @@ from spl.token.instructions import get_associated_token_address
 from solders.pubkey import Pubkey
 from solders.keypair import Keypair
 from spl.token.client import Token
-from utils.utils import format_response_for_telegram, get_sqr_info, resolve_sns_domain
+from utils.utils import get_sqr_info, resolve_sns_domain
 from base58 import b58decode
 from config import (
     SOLANA_RPC_URL,
