@@ -12,14 +12,26 @@ import traceback
 logger = logging.getLogger(__name__)
 
 def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
-    """Format text to be compatible with Telegram's HTML or Markdown."""
+    """Format text to be compatible with Telegram's HTML formatting."""
     if parse_mode == 'HTML':
-        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-    elif parse_mode == 'MARKDOWN_V2':
-        # Escape Markdown special characters
-        special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-        for char in special_chars:
-            text = text.replace(char, f'\\{char}')
+        # First escape all HTML special characters
+        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        
+        # Then convert markdown-style formatting to HTML with proper tag pairs
+        # Handle bold text
+        text = text.replace('**', '<b>').replace('**', '</b>')
+        # Handle italic text
+        text = text.replace('*', '<i>').replace('*', '</i>')
+        # Handle underlined text
+        text = text.replace('__', '<u>').replace('__', '</u>')
+        # Handle code blocks
+        text = text.replace('```', '<pre>').replace('```', '</pre>')
+        # Handle inline code
+        text = text.replace('`', '<code>').replace('`', '</code>')
+        
+        # Remove any unsupported HTML tags
+        text = re.sub(r'<[^>]*>', '', text)
+        
         return text
     return text  # Return unmodified text if parse mode is not recognized
 

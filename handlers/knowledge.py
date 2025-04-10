@@ -20,7 +20,7 @@ async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
             "❌ Please provide the information to learn.\n"
-            "Usage: /learn <topic> | <information>",
+            "Usage: /learn [topic] | [information]",
             parse_mode=ParseMode.HTML
         )
         return
@@ -30,7 +30,7 @@ async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if '|' not in input_text:
         await update.message.reply_text(
             "❌ Please separate topic and information with '|'.\n"
-            "Usage: /learn <topic> | <information>",
+            "Usage: /learn [topic] | [information]",
             parse_mode=ParseMode.HTML
         )
         return
@@ -42,7 +42,7 @@ async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not topic or not information:
         await update.message.reply_text(
             "❌ Both topic and information are required.\n"
-            "Usage: /learn <topic> | <information>",
+            "Usage: /learn [topic] | [information]",
             parse_mode=ParseMode.HTML
         )
         return
@@ -128,7 +128,7 @@ async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
             "❌ Please provide a URL.\n"
-            "Usage: /learn_from_url <url>",
+            "Usage: /learn_from_url [url]",
             parse_mode=ParseMode.HTML
         )
         return
@@ -138,8 +138,8 @@ async def learn_from_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         url = 'https://' + url
     
     try:
-        # Get webpage content
-        content = get_webpage_content(url)
+        # Get webpage content - properly await the async function
+        content = await get_webpage_content(url)
         if not content:
             await update.message.reply_text(
                 "❌ Could not fetch content from the URL. Please try again.",

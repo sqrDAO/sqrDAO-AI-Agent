@@ -43,7 +43,7 @@ from utils.utils import (
 # Import config
 from config import (
     TELEGRAM_BOT_TOKEN, ERROR_MESSAGES, SUCCESS_MESSAGES,
-    DocumentWithMassMessageCaption
+    DocumentWithMassMessageCaption, generation_config, safety_settings
 )
 
 # Configure logging
@@ -61,31 +61,6 @@ db = Database()
 
 # Initialize Gemini model with safety settings
 try:
-    generation_config = {
-        "temperature": 0.9,
-        "top_p": 1,
-        "top_k": 1,
-        "max_output_tokens": 2048,
-    }
-
-    safety_settings = [
-        {
-            "category": "HARM_CATEGORY_HARASSMENT",
-            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-        },
-        {
-            "category": "HARM_CATEGORY_HATE_SPEECH",
-            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-        },
-        {
-            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-        },
-        {
-            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-        },
-    ]
 
     model = genai.GenerativeModel(
         model_name='models/gemini-2.0-flash',
@@ -134,8 +109,8 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
         response = await process_message_with_context_and_reply(message, context)
         if response:
             await message.reply_text(
-                format_response_for_telegram(response, 'MARKDOWN_V2'),
-                parse_mode=ParseMode.MARKDOWN_V2
+                format_response_for_telegram(response, 'HTML'),
+                parse_mode=ParseMode.HTML
             )
 
     except Exception as e:
@@ -156,8 +131,8 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
         response = await process_message_with_context_and_reply(message, context)
         if response:
             await message.reply_text(
-                format_response_for_telegram(response, 'MARKDOWN_V2'),
-                parse_mode=ParseMode.MARKDOWN_V2
+                format_response_for_telegram(response, 'HTML'),
+                parse_mode=ParseMode.HTML
             )
 
     except Exception as e:
@@ -194,26 +169,44 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         return get_error_message('processing_error')
 
 async def process_message_with_context(message, context):
-    # Prepare context for the model
+    # Basic stop words to filter out
+    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'shall', 'should', 'may',
+                 'might', 'must', 'can', 'could', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my',
+                 'your', 'his', 'her', 'its', 'our', 'their', 'this', 'that', 'these', 'those', 'what',
+                 'which', 'who', 'whom', 'whose', 'where', 'when', 'why', 'how', 'in', 'on', 'at', 'by',
+                 'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before',
+                 'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over',
+                 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why',
+                 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+                 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can',
+                 'will', 'just', 'don', 'should', 'now'}
+
+    # Extract meaningful keywords by removing stop words and short words
+    words = message.lower().split()
+    keywords = [word for word in words if word not in stop_words and len(word) > 2]
+    
+    # Get relevant knowledge using a single query with the most significant keywords
+    knowledge_text = ""
+    if keywords:
+        # Use the longest keyword for knowledge retrieval
+        main_keyword = max(keywords, key=len)
+        knowledge = db.get_knowledge(main_keyword)
+        if knowledge:
+            knowledge_text = "\nStored knowledge:\n"
+            for info in knowledge:
+                knowledge_text += f"• {info}\n"
+
+    # Format context properly
     context_text = ""
     if context:
         context_text = "Previous relevant conversations:\n"
         for entry in context:
-            if len(entry) == 3:  # Ensure there are 3 elements to unpack
-                prev_msg, prev_resp, ctx = entry
+            if len(entry) >= 2:  # Ensure we have at least message and response
+                prev_msg, prev_resp = entry[:2]  # Take first two elements
                 context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
             else:
-                logger.warning("Unexpected context format, skipping entry.")
-    
-    # Get relevant knowledge
-    keywords = message.lower().split()
-    knowledge_text = ""
-    for keyword in keywords:
-        knowledge = db.get_knowledge(keyword)
-        if knowledge:
-            knowledge_text += "\nStored knowledge:\n"
-            for info in knowledge:
-                knowledge_text += f"• {info[0]}\n"
+                logger.warning(f"Unexpected context format: {entry}")
     
     # Combine context with current message and knowledge
     prompt = f"{context_text}\n{knowledge_text}\nCurrent message: {message}\n\nPlease provide a response that takes into account both the context of previous conversations and the stored knowledge if relevant."
