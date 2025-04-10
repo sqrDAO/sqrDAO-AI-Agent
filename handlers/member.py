@@ -291,6 +291,9 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = context.args[0]
     group_name = context.args[1] if len(context.args) > 1 else f"Group {group_id}"
     
+    if 'group_members' not in context.bot_data:
+        context.bot_data['group_members'] = []
+
     # Check if group already exists
     if any(group['id'] == group_id for group in context.bot_data['group_members']):
         await update.message.reply_text(

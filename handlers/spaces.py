@@ -111,8 +111,8 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         if time_diff < timedelta(0):
             logger.warning("Transaction was completed before command was issued")
             return False, "Transaction was completed before the command was issued", None
-        elif time_diff > timedelta(minutes=30):
-            minutes_late = int((time_diff - timedelta(minutes=30)).total_seconds() / 60)
+        elif time_diff > timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES):
+            minutes_late = int((time_diff - timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES)).total_seconds() / 60)
             logger.warning(f"Transaction was completed {minutes_late} minutes after deadline")
             return False, f"Transaction was completed {minutes_late} minutes after the 30-minute window expired", None
             
