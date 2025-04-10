@@ -91,14 +91,14 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     knowledge = context.bot_data['db'].get_knowledge("sqrdao")
     about_text = "<b>About sqrDAO:</b>\n\n"
     if knowledge:
-        about_text += knowledge[0][0]
+        about_text += knowledge[0]
     else:
         about_text = "sqrDAO is a Web3 builders-driven community in Vietnam and Southeast Asia, created by and for crypto builders. We connect and empower both technical and non-technical builders to collaborate, explore new ideas, and BUIDL together."
     
     about_text += "\n\n<b>About sqrFUND:</b>\n\n"
     knowledge = context.bot_data['db'].get_knowledge("sqrfund")
     if knowledge:
-        about_text += knowledge[0][0]
+        about_text += knowledge[0]
     else:
         about_text += "sqrFUND, incubated by sqrDAO, is a Web3 + AI development DAO that combines Web3 builders' expertise with AI-powered data analytics to create intelligent DeFAI trading and market analysis agents."
     await update.message.reply_text(about_text, parse_mode=ParseMode.HTML)
@@ -107,13 +107,13 @@ async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /website command."""
     knowledge = context.bot_data['db'].get_knowledge("website")
     if knowledge:
-        website_text = knowledge[0][0]
+        website_text = knowledge[0]
     else:
         website_text = "Visit sqrDAO at https://sqrdao.com"
 
     knowledge = context.bot_data['db'].get_knowledge("sqrfund")
     if knowledge:
-        website_text += "\n\n" + knowledge[0][0]
+        website_text += "\n\n" + knowledge[0]
     else:
         website_text += "\n\nVisit sqrFUND at https://sqrfund.ai"
 

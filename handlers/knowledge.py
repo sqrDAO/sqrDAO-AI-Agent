@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /learn command - Add information to the bot's knowledge base."""
+
     if not find_authorized_member_by_username(update.effective_user['username'], context):
+        logger.warning("Unauthorized access attempt by user: %s", update.effective_user['username'])
         await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
         return
 
@@ -27,6 +29,8 @@ async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Join all arguments and split by '|'
     input_text = ' '.join(context.args)
+    logger.debug("Input text received: %s", input_text)
+
     if '|' not in input_text:
         await update.message.reply_text(
             "❌ Please separate topic and information with '|'.\n"
@@ -38,8 +42,9 @@ async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic, information = input_text.split('|', 1)
     topic = topic.strip()
     information = information.strip()
-    
+
     if not topic or not information:
+        logger.error("Both topic and information are required but one or both are missing.")
         await update.message.reply_text(
             "❌ Both topic and information are required.\n"
             "Usage: /learn [topic] | [information]",
@@ -48,7 +53,15 @@ async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Store in knowledge base
-    context.bot_data['db'].store_knowledge(topic, information)
+    try:
+        context.bot_data['db'].store_knowledge(topic, information)
+    except Exception as e:
+        logger.error("Error storing knowledge for topic '%s': %s", topic, str(e))
+        await update.message.reply_text(
+            "❌ An error occurred while storing the information. Please try again.",
+            parse_mode=ParseMode.HTML
+        )
+        return
     
     await update.message.reply_text(
         f"✅ Successfully learned about '{topic}'.",

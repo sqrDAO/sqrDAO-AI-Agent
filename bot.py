@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram import Update, Message
 from telegram.constants import ParseMode
+import re
 
 # Import handlers from other modules
 from handlers.general import (
@@ -184,8 +185,8 @@ async def process_message_with_context(message, context):
 
     # Extract meaningful keywords by removing stop words and short words
     words = message.lower().split()
-    keywords = [word for word in words if word not in stop_words and len(word) > 2]
-    
+    keywords = [re.sub(r'\W+', '', word) for word in words if len(word) > 2]  # Strip special characters
+    keywords = [word for word in keywords if word]  # Remove empty strings
     # Get relevant knowledge using a single query with the most significant keywords
     knowledge_text = ""
     if keywords:
