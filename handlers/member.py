@@ -4,7 +4,6 @@ from telegram.constants import ParseMode
 import logging
 from datetime import datetime
 import json
-from config import ERROR_MESSAGES as _UNUSED_ERROR_MESSAGES, SUCCESS_MESSAGES as _UNUSED_SUCCESS_MESSAGES
 from handlers.general import find_authorized_member_by_username, find_member_by_username
 
 logger = logging.getLogger(__name__)
@@ -23,6 +22,9 @@ async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Store the user ID in pending_requests
+    if 'pending_requests' not in context.bot_data:
+        context.bot_data['pending_requests'] = {}
+        
     if user.username:
         context.bot_data['pending_requests'][user.username] = {
             'user_id': user_id,

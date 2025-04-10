@@ -17,6 +17,7 @@ SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.co
 SQR_TOKEN_MINT = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"
 RECIPIENT_WALLET = "Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7"
 TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+SQR_PURCHASE_LINK = "https://t.me/bonkbot_bot?start=ref_j03ne"
 
 # Token Costs
 TEXT_SUMMARY_COST = 1000

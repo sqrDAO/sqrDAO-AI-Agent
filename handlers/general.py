@@ -3,7 +3,6 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from typing import Optional
 import logging
-from config import ERROR_MESSAGES as _UNUSED_ERROR_MESSAGES, SUCCESS_MESSAGES as _UNUSED_SUCCESS_MESSAGES
 
 logger = logging.getLogger(__name__)
 

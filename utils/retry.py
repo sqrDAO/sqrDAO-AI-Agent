@@ -17,7 +17,6 @@ RETRYABLE_EXCEPTIONS = (
     ConnectionError,
     TimeoutError,
     asyncio.TimeoutError,
-    Exception  # Generic exception as fallback
 )
 
 def create_retry_decorator(

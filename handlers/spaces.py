@@ -9,7 +9,6 @@ import httpx
 import os
 import requests
 import uuid
-import traceback
 import aiofiles
 from gtts import gTTS
 from solana.rpc.async_api import AsyncClient
@@ -115,7 +114,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         elif time_diff > timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES):
             minutes_late = int((time_diff - timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES)).total_seconds() / 60)
             logger.warning(f"Transaction was completed {minutes_late} minutes after deadline")
-            return False, f"Transaction was completed {minutes_late} minutes after the 30-minute window expired", None
+            return False, f"Transaction was completed {minutes_late} minutes after the {TRANSACTION_TIMEOUT_MINUTES}-minute window expired", None
             
         # Check token amount using pre and post token balances
         try:
@@ -128,7 +127,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             
             # Find the token transfer amount by comparing pre and post balances
             transfer_amount = 0
-            target_mint = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"
+            target_mint = os.getenv('SQR_TOKEN_MINT')
             
             for post_balance in post_balances:
                 if str(post_balance.mint) == target_mint:
@@ -173,10 +172,11 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         api_key = os.getenv('SQR_FUND_API_KEY')
         if not api_key:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
-            raise PermanentError("API key not configured")
+            raise PermanentError("API key not configured") from None
 
         # First download the space asynchronously
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # First download the space asynchronously
             download_response = await client.post(
                 "https://spaces.sqrfund.ai/api/async/download-spaces",
                 headers={
@@ -190,13 +190,13 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
 
             if download_response.status_code != 202:
                 logger.error(f"Failed to initiate space download: {download_response.text}")
-                raise PermanentError(f"Failed to initiate space download: {download_response.text}")
+                raise PermanentError(f"Failed to initiate space download: {download_response.text}") from None
 
             # Get the job ID from the response
             job_data = download_response.json()
             job_id = job_data.get('jobId')
             if not job_id:
-                raise PermanentError("No job ID received from download request")
+                raise PermanentError("No job ID received from download request") from None
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
@@ -224,7 +224,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                 # Proceed with summarization
                 summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
                 
-                summary_response = requests.post(
+                summary_response = await client.post(
                     summary_url,
                     headers={
                         "Content-Type": "application/json",
@@ -259,10 +259,10 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             elif job_status == 'failed':
                 raise PermanentError(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
             else:
-                raise TransientError("Job still processing")
+                raise TransientError("Job still processing") from e
             
     except httpx.HTTPError as e:
-        raise TransientError(f"Failed to check job status: {str(e)}")
+        raise TransientError(f"Failed to check job status: {str(e)}") from e
     except ValueError as e:
         raise PermanentError(f"Invalid response format: {str(e)}")
 
@@ -280,9 +280,8 @@ async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Option
         # Convert text to speech
         tts = gTTS(text=text, lang=language, slow=False)
         
-        # Save the audio file asynchronously
-        async with aiofiles.open(filepath, 'wb') as audio_file:
-            tts.save(audio_file)  # This will need to be adjusted to save the audio correctly
+        # Save the audio file
+        tts.save(filepath)  # Direct save to the file path
 
         return filepath, None
     except Exception as e:
@@ -490,8 +489,8 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
             reset_user_data(context)  # Reset user data after 3 failed attempts
         else:
             await message.reply_text(
-                f"❌ Attempt {attempts}/3 failed."
-                f"Reason: {status_message}."
+                f"❌ Attempt {attempts}/3 failed.\n"
+                f"Reason: {status_message}.\n"
                 "Please try again with a valid signature.",
                 parse_mode=ParseMode.HTML
             )
@@ -524,12 +523,14 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'job_id': None,
             'failed_attempts': 0
         })
+
+        purchase_link = os.getenv("SQR_PURCHASE_LINK")
         
         await update.message.reply_text(
             "🔄 <b>Space Summarization Process</b>\n\n"
             f"Request Type: <b>{request_type.upper()}</b>\n"
             f"Required Amount: <b>{cost} $SQR</b>\n\n"
-            "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n\n"
+            f"<a href='{purchase_link}'>Buy SQR on Bonkbot</a>\n\n"
             "To proceed with space summarization, please follow these steps:\n\n"
             "1. Send the required $SQR tokens to this address:\n"
             f"<code>{RECIPIENT_WALLET}</code>\n"
@@ -610,7 +611,7 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Send a processing message
     processing_msg = await update.message.reply_text(
-        "🔄 Processing your edit request...",
+        "🔄 Processing your edit request (this may take up to 60 seconds)...",
         parse_mode=ParseMode.HTML
     )
 

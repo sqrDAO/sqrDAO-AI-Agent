@@ -6,7 +6,6 @@ import csv
 import io
 from utils.utils import get_webpage_content
 from handlers.general import find_authorized_member_by_username
-from config import ERROR_MESSAGES as _UNUSED_ERROR_MESSAGES, SUCCESS_MESSAGES as _UNUSED_SUCCESS_MESSAGES
 
 logger = logging.getLogger(__name__)
 

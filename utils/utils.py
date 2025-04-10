@@ -30,7 +30,13 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         text = text.replace('`', '<code>').replace('`', '</code>')
         
         # Remove any unsupported HTML tags
-        text = re.sub(r'<[^>]*>', '', text)
+        # E.g., keep <b>, <i>, <u>, <pre>, <code>
+        allowed_tags = ['b', 'i', 'u', 'pre', 'code']
+        text = re.sub(
+            rf'</?(?!({"|".join(allowed_tags)}))[^>]*>',
+            '',
+            text
+        )
         
         return text
     return text  # Return unmodified text if parse mode is not recognized
@@ -63,7 +69,7 @@ async def get_webpage_content(url: str) -> Optional[str]:
         raise TransientError(f"HTTP error: {str(e)}") from e
     except Exception as e:
         logger.error(f"Error fetching {url}: {str(e)}")
-        raise TransientError(f"Error fetching content: {str(e)}")
+        raise TransientError(f"Error fetching content: {str(e)}") from e
 
 @with_retry(max_attempts=3)
 async def resolve_sns_domain(domain: str) -> Optional[str]:
@@ -95,7 +101,7 @@ async def resolve_sns_domain(domain: str) -> Optional[str]:
         logger.error(f"Error resolving SNS domain {domain}: {str(e)}")
         logger.error(f"Error type: {type(e)}")
         logger.error(f"Full error traceback: {traceback.format_exc()}")
-        raise TransientError(f"Error resolving domain: {str(e)}")
+        raise TransientError(f"Error resolving domain: {str(e)}") from e
 
 @with_retry(max_attempts=3)
 async def get_sqr_info() -> Optional[dict]:
@@ -113,7 +119,7 @@ async def get_sqr_info() -> Optional[dict]:
         raise TransientError(f"HTTP error: {str(e)}") from e
     except Exception as e:
         logger.error(f"Error fetching SQR info: {str(e)}")
-        raise TransientError(f"Error fetching token info: {str(e)}")
+        raise TransientError(f"Error fetching token info: {str(e)}") from e
 
 def escape_markdown_v2(text: str) -> str:
     """Escape special characters for Telegram's Markdown V2."""
