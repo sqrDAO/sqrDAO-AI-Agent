@@ -173,31 +173,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
             raise PermanentError("API key not configured") from None
 
-        # First download the space asynchronously
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            # First download the space asynchronously
-            download_response = await client.post(
-                "https://spaces.sqrfund.ai/api/async/download-spaces",
-                headers={
-                    "Content-Type": "application/json",
-                    "X-API-Key": api_key
-                },
-                json={
-                    "spacesUrl": space_url
-                }
-            )
-
-            if download_response.status_code != 202:
-                logger.error(f"Failed to initiate space download: {download_response.text}")
-                raise PermanentError(f"Failed to initiate space download: {download_response.text}") from None
-
-            # Get the job ID from the response
-            job_data = download_response.json()
-            new_job_id = job_data.get('jobId')
-            if not new_job_id:
-                raise PermanentError("No job ID received from download request") from None
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient() as client:
+            logger.info(f"Checking job status for: {job_id}")
             response = await client.get(
                 f"https://spaces.sqrfund.ai/api/jobs/{job_id}",
                 headers={"X-API-Key": api_key}
@@ -250,7 +227,6 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
 
                 if summary_response.status_code == 200:
                     summary_data = summary_response.json()
-                    logger.info(f"Summarization response: {summary_data}")
                     return True, summary_data.get('summary', '✅ Space summarized successfully!')
                 else:
                     logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
@@ -417,7 +393,36 @@ async def handle_successful_transaction(
             "⏳ Processing your request...",
             parse_mode=ParseMode.HTML
         )
-        
+
+        # Move the download logic here
+        api_key = os.getenv('SQR_FUND_API_KEY')
+        if not api_key:
+            logger.error("SQR_FUND_API_KEY not found in environment variables")
+            raise PermanentError("API key not configured") from None
+
+        async with httpx.AsyncClient() as client:
+            download_response = await client.post(
+                "https://spaces.sqrfund.ai/api/async/download-spaces",
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": api_key
+                },
+                json={
+                    "spacesUrl": space_url
+                }
+            )
+
+            if download_response.status_code != 202:
+                logger.error(f"Failed to initiate space download: {download_response.text}")
+                raise PermanentError(f"Failed to initiate space download: {download_response.text}") from None
+
+            # Get the job ID from the response
+            job_data = download_response.json()
+            job_id = job_data.get('jobId')
+            if not job_id:
+                raise PermanentError("No job ID received from download request") from None
+
+        # Start the periodic job check
         asyncio.create_task(
             periodic_job_check(
                 context, job_id, space_url,
