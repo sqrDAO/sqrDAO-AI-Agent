@@ -1,6 +1,11 @@
 import os
 from dotenv import load_dotenv
 from telegram.ext.filters import BaseFilter
+import logging
+
+# Initialize the logger
+logging.basicConfig(level=logging.DEBUG)  # Set the logging level as needed
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -13,6 +18,8 @@ if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 SQR_FUND_API_KEY = os.getenv('SQR_FUND_API_KEY')
+if not GOOGLE_API_KEY or not GOOGLE_CSE_ID or not SQR_FUND_API_KEY:
+    raise ValueError("Additional environment variables are missing.")
 
 # Solana Configuration
 SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
@@ -104,6 +111,7 @@ safety_settings = [
 class DocumentWithMassMessageCaption(BaseFilter):
     def filter(self, message):
         # Check if it's a document AND has a caption starting with /mass_message
+        logger.debug(f"Filtering message for /mass_message caption: {message.caption}")
         return bool(
             message.document and
             message.caption and

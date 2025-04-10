@@ -193,8 +193,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
 
             # Get the job ID from the response
             job_data = download_response.json()
-            job_id = job_data.get('jobId')
-            if not job_id:
+            new_job_id = job_data.get('jobId')
+            if not new_job_id:
                 raise PermanentError("No job ID received from download request") from None
 
         async with httpx.AsyncClient(timeout=30.0) as client:
