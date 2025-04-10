@@ -230,11 +230,11 @@ async def sqr_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         info_text += f"• 24h Volume: ${data.get('volume_usd', {}).get('h24', 'N/A')}\n"
         info_text += f"• Holders: {data.get('holders', 'N/A')}\n"
         info_text += f"• Total Supply: {data.get('total_supply', 'N/A')} SQR\n"
-        info_text += f"• Circulating Supply: {data.get('circulating_supply', 'N/A')} SQR\n\n"
+        info_text += f"• Circulating Supply: {data.get('circulating_supply', data.get('total_supply', 'N/A'))} SQR\n\n"
         info_text += f"<b>Token Address:</b>\n{SQR_TOKEN_MINT}\n\n"
         info_text += f"<b>Use Cases:</b>\n"
-        info_text += f"• Text summary: {TEXT_SUMMARY_COST} SQR\n"
-        info_text += f"• Audio summary: {AUDIO_SUMMARY_COST} SQR"
+        info_text += f"• X Space Text summary: {TEXT_SUMMARY_COST} SQR\n"
+        info_text += f"• X Space Audio summary: {AUDIO_SUMMARY_COST} SQR"
         
         await update.message.reply_text(info_text, parse_mode=ParseMode.HTML)
         

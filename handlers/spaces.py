@@ -54,7 +54,8 @@ def reset_user_data(context: ContextTypes.DEFAULT_TYPE) -> None:
         'space_url': None,
         'request_type': None,
         'job_id': None,
-        'failed_attempts': 0
+        'failed_attempts': 0,
+        'signature_attempts': 0
     })
 
 async def check_transaction_status(signature: str, command_start_time: datetime, 
@@ -70,19 +71,16 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             logger.error(f"Error converting signature format: {str(e)}")
             return False, f"❌ Error converting signature format: {str(e)}", None
 
-        # Check if transaction is confirmed
-        response = await client.get_signature_statuses([signature_obj])
-        if not response.value[0]:
-            return False, "Transaction not found", None
-        
-        status = response.value[0]
-        if status.err:
-            return False, f"Transaction failed: {status.err}", None
-        
         # Get transaction details
-        tx = await client.get_transaction(signature_obj)
+        tx = await client.get_transaction(
+            signature_obj,
+            encoding="jsonParsed",  # Use jsonParsed for better token balance parsing
+        )
+
         if not tx or not tx.value:
             return False, "Could not get transaction details", None
+        else:
+            logger.info(f"Transaction details: {tx}")
         
         transaction_data = tx.value.transaction
         meta = transaction_data.meta
@@ -100,20 +98,26 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         if not tx.value.block_time:
             logger.error("No block time found in transaction")
             return False, "❌ No block time found in transaction", None
-            
+
+        # Log the raw block time
+        logger.info(f"Raw block time from transaction: {tx.value.block_time}")
+
         # Convert block time to datetime
         transaction_time = datetime.fromtimestamp(tx.value.block_time)
         
         # Check if transaction was completed within the 30-minute window
         time_diff = transaction_time - command_start_time
         
+        # Log the command start time and transaction time for debugging
+        logger.info(f"Command start time: {command_start_time}, Transaction time: {transaction_time}, Time difference: {time_diff}")
+
         if time_diff < timedelta(0):
             logger.warning("Transaction was completed before command was issued")
-            return False, "❌ Transaction was completed before the command was issued", None
+            return False, "Transaction was completed before the command was issued", None
         elif time_diff > timedelta(minutes=30):
             minutes_late = int((time_diff - timedelta(minutes=30)).total_seconds() / 60)
             logger.warning(f"Transaction was completed {minutes_late} minutes after deadline")
-            return False, f"❌ Transaction was completed {minutes_late} minutes after the 30-minute window expired", None
+            return False, f"Transaction was completed {minutes_late} minutes after the 30-minute window expired", None
             
         # Check token amount using pre and post token balances
         try:
@@ -168,17 +172,12 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
 async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
     """Check the status of a summarization job with retry logic."""
     try:
-        # First check transaction status
-        success, message, _ = await check_transaction_status(job_id)
-        if not success:
-            return False, message
-
         api_key = os.getenv('SQR_FUND_API_KEY')
         if not api_key:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
             raise PermanentError("API key not configured")
 
-        # Then download the space
+        # First download the space
         download_response = requests.post(
             "https://spaces.sqrfund.ai/api/async/download-spaces",
             headers={
@@ -211,7 +210,21 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             response.raise_for_status()
             data = response.json()
             
-            if data['status'] == 'completed':
+            # Log the entire response for debugging
+            logger.info(f"Job status response: {data}")
+
+            # Check if the response indicates success
+            if not data.get('success', False):
+                logger.error("Job status check failed: success key is False")
+                raise PermanentError("Job status check failed: success key is False")
+
+            # Access the job status from params
+            job_status = data.get('job', {}).get('status')
+            if job_status is None:
+                logger.error("Response does not contain 'job' or 'status' key")
+                raise PermanentError("Invalid response format: 'job' or 'status' key missing")
+
+            if job_status == 'completed':
                 # Proceed with summarization
                 summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
                 
@@ -247,8 +260,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                 else:
                     logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
                     return False, f"❌ Failed to summarize space: {summary_response.text}"
-            elif data['status'] == 'failed':
-                raise PermanentError(f"Job failed: {data.get('error', 'Unknown error')}")
+            elif job_status == 'failed':
+                raise PermanentError(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
             else:
                 raise TransientError("Job still processing")
             
@@ -299,19 +312,24 @@ async def periodic_job_check(
             if success:
                 if request_type == 'audio':
                     # Convert text to audio
-                    audio_url = await convert_text_to_audio(result)
-                    if audio_url:
+                    audio_path, error = await convert_text_to_audio(result)
+                    if audio_path and not error:
                         await context.bot.send_audio(
                             chat_id=chat_id,
-                            audio=audio_url,
+                            audio=open(audio_path, 'rb'),
                             caption="✅ Audio summary completed!",
                             parse_mode=ParseMode.HTML
                         )
+                        # Clean up the temporary audio file
+                        try:
+                            os.remove(audio_path)
+                        except Exception as e:
+                            logger.error(f"Error cleaning up audio file: {str(e)}")
                     else:
                         await context.bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=message_id,
-                            text="❌ Failed to convert summary to audio",
+                            text=f"❌ Failed to convert summary to audio: {error}",
                             parse_mode=ParseMode.HTML
                         )
                 else:
@@ -425,27 +443,47 @@ async def handle_failed_transaction(
 
 async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, message: Message):
     """Process a transaction signature."""
-    command_start_time = datetime.now()
+
+    command_start_time = None
+    if context.user_data.get('command_start_time'):
+        command_start_time = context.user_data.get('command_start_time')
+    else:
+        command_start_time = datetime.now()
     space_url = context.user_data.get('space_url')
     request_type = context.user_data.get('request_type', 'text')
     
-    # Reset user data
-    context.user_data['awaiting_signature'] = False
-    context.user_data['command_start_time'] = None
-    context.user_data['space_url'] = None
-    context.user_data['request_type'] = None
-    
+    # Initialize or increment the attempt counter
+    attempts = context.user_data.get('signature_attempts', 0) + 1
+    context.user_data['signature_attempts'] = attempts
+
+    # Log the signature and attempt count
+    logger.info(f"Processing signature: {signature}, Attempt: {attempts}/3")
+
     # Check transaction status
     success, status_message, job_id = await check_transaction_status(
         signature, command_start_time, space_url, request_type
     )
     
     if success:
+        logger.info(f"Signature processed successfully: {signature}")
         await handle_successful_transaction(
             context, message, message.text, job_id, space_url, request_type
         )
+        # Reset attempts after a successful transaction
+        context.user_data['signature_attempts'] = 0
     else:
-        await handle_failed_transaction(context, message, message.text, request_type)
+        logger.warning(f"Signature processing failed: {status_message}")
+        if attempts >= 3:
+            logger.error("Maximum attempts reached for signature processing. Please try again.")
+            await handle_failed_transaction(context, message, message.text, request_type)
+            reset_user_data(context)  # Reset user data after 3 failed attempts
+        else:
+            await message.reply_text(
+                f"❌ Attempt {attempts}/3 failed."
+                f"Reason: {status_message}."
+                "Please try again with a valid signature.",
+                parse_mode=ParseMode.HTML
+            )
 
 async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /summarize_space command with improved error handling."""
@@ -462,7 +500,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(context.args) > 1:
             request_type = 'audio' if context.args[1].lower() == 'audio' else 'text'
         else:
-            raise ValueError("Please specify the request type: 'text' or 'audio'.")
+            request_type = 'text'  # Default to text if not specified
 
         cost = AUDIO_SUMMARY_COST if request_type == 'audio' else TEXT_SUMMARY_COST
         
@@ -483,10 +521,10 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<a href='https://t.me/bonkbot_bot?start=ref_j03ne'>Buy SQR on Bonkbot</a>\n\n"
             "To proceed with space summarization, please follow these steps:\n\n"
             "1. Send the required $SQR tokens to this address:\n"
-            "<code>Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7</code>\n"
+            f"<code>{RECIPIENT_WALLET}</code>\n"
             "2. Copy the transaction signature.\n"
             "3. Paste the signature in this chat.\n\n"
-            "⚠️ <i>Note: The transaction must be completed within {TRANSACTION_TIMEOUT_MINUTES} minutes from now.</i>\n"
+            f"⚠️ <i>Note: The transaction must be completed within {TRANSACTION_TIMEOUT_MINUTES} minutes from now.</i>\n"
             "If you need to cancel the current transaction, use the /cancel command.\n\n"
             "⏰ Deadline: " + (context.user_data['command_start_time'] + timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES)).strftime("%H:%M:%S"),
             parse_mode=ParseMode.HTML

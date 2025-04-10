@@ -114,6 +114,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await process_signature(message.text, context, message)
             return
 
+        # If we're in the middle of a space summarization process, ignore other messages
+        if context.user_data.get('space_url') and not context.user_data.get('awaiting_signature'):
+            return
+
         # Process the message based on chat type
         if message.chat.type == 'private':
             await handle_private_message(message, context)
