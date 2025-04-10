@@ -141,7 +141,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
                         transfer_amount = post_amount - pre_amount
                         break
             
-            required_amount = 2000 if request_type == 'audio' else 1000
+            required_amount = AUDIO_SUMMARY_COST if request_type == 'audio' else TEXT_SUMMARY_COST
             
             if transfer_amount <= 0:
                 logger.warning(f"Invalid transfer amount: {transfer_amount}")
@@ -581,7 +581,7 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Space URL: %s", space_url)
 
     # Validate the space URL format
-    if not (space_url.startswith("https://x.com/i/spaces/") or space_url.startswith("https://x.com/i/broadcasts/")):
+    if not ('x.com/i/spaces/' in space_url or 'x.com/i/broadcasts/' in space_url):
         await update.message.reply_text(
             "❌ Invalid space URL format. Please provide a valid URL.",
             parse_mode=ParseMode.HTML

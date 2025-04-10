@@ -8,6 +8,8 @@ load_dotenv()
 # API Keys
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
+    raise ValueError("Required environment variables are missing.")
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 SQR_FUND_API_KEY = os.getenv('SQR_FUND_API_KEY')
@@ -68,7 +70,7 @@ SUCCESS_MESSAGES = {
 # Announcement Prefixes
 ANNOUNCEMENT_PREFIXES = {
     'sqrdao': "📢 <b>Announcement from sqrDAO:</b>",
-    'summit': "📢 <b>Announcement from Web3 Builders' Summit:</b>",
+    'summit': "📢 <b>Web3 Builders' Summit Announcement:</b>",
     'sqrfund': "📢 <b>Announcement from sqrFUND:</b>",
     'default': "📢 <b>Announcement:</b>"
 }
