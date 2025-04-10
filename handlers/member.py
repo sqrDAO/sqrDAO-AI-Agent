@@ -1,11 +1,10 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from typing import Optional
 import logging
 from datetime import datetime
 import json
-from config import ERROR_MESSAGES, SUCCESS_MESSAGES
+from config import ERROR_MESSAGES as _UNUSED_ERROR_MESSAGES, SUCCESS_MESSAGES as _UNUSED_SUCCESS_MESSAGES
 from handlers.general import find_authorized_member_by_username, find_member_by_username
 
 logger = logging.getLogger(__name__)
@@ -129,7 +128,8 @@ async def reject_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     username = context.args[0].strip('@')
-    if username not in context.bot_data['pending_requests']:
+    pending_requests = context.bot_data.get('pending_requests', {})
+    if username not in pending_requests:
         await update.message.reply_text(
             "❌ No pending request found for this username.",
             parse_mode=ParseMode.HTML
@@ -163,7 +163,7 @@ async def list_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
         return
 
-    if not context.bot_data['pending_requests']:
+    if not context.bot_data.get('pending_requests', {}):
         await update.message.reply_text(
             "📝 No pending member requests.",
             parse_mode=ParseMode.HTML
@@ -242,7 +242,7 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     groups_text = "<b>Tracked Groups:</b>\n\n"
-    groups = context.bot_data['group_members']
+    groups = context.bot_data.get('group_members', [])
     
     # Handle case where groups is a list of dictionaries or a single list
     if isinstance(groups, list):
@@ -266,11 +266,11 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if len(group) >= 2:
                     groups_text += f"• {group[0]} (ID: {group[1]})\n"
                 else:
-                    groups_text += f"• Unknown Group (Invalid format)\n"
+                    groups_text += "• Unknown Group (Invalid format)\n"
         else:
-            groups_text += f"• Unknown Group (Invalid format)\n"
+            groups_text += "• Unknown Group (Invalid format)\n"
     else:
-        groups_text += f"• Unknown Group (Invalid format)\n"
+        groups_text += "• Unknown Group (Invalid format)\n"
     
     await update.message.reply_text(groups_text, parse_mode=ParseMode.HTML)
 

@@ -21,10 +21,7 @@ from config import (
     TRANSACTION_TIMEOUT_MINUTES,
     JOB_CHECK_TIMEOUT_SECONDS,
     MAX_JOB_CHECK_ATTEMPTS,
-    ERROR_MESSAGES,
-    SUCCESS_MESSAGES,
     RECIPIENT_WALLET,
-    TOKEN_PROGRAM_ID,
     SOLANA_RPC_URL
 )
 
@@ -200,7 +197,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             if not job_id:
                 raise PermanentError("No job ID received from download request")
         except Exception as e:
-            raise PermanentError(f"Error parsing download response: {str(e)}")
+            raise PermanentError(f"Error parsing download response: {str(e)}") from e
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
@@ -314,12 +311,13 @@ async def periodic_job_check(
                     # Convert text to audio
                     audio_path, error = await convert_text_to_audio(result)
                     if audio_path and not error:
-                        await context.bot.send_audio(
-                            chat_id=chat_id,
-                            audio=open(audio_path, 'rb'),
-                            caption="✅ Audio summary completed!",
-                            parse_mode=ParseMode.HTML
-                        )
+                        with open(audio_path, 'rb') as audio_file:
+                            await context.bot.send_audio(
+                                chat_id=chat_id,
+                                audio=audio_file,
+                                caption="✅ Audio summary completed!",
+                                parse_mode=ParseMode.HTML
+                            )
                         # Clean up the temporary audio file
                         try:
                             os.remove(audio_path)

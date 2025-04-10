@@ -1,7 +1,7 @@
 from functools import wraps
 import asyncio
 import logging
-from typing import Callable, Type, Union, Tuple, List
+from typing import Callable, Type, Union, Tuple
 from tenacity import (
     retry,
     stop_after_attempt,

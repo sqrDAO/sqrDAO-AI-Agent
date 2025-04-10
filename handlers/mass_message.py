@@ -4,7 +4,7 @@ from telegram.constants import ParseMode
 import logging
 from utils.utils import get_announcement_prefix, parse_mass_message_input
 from handlers.general import find_authorized_member_by_username
-from config import ERROR_MESSAGES, SUCCESS_MESSAGES
+from config import ERROR_MESSAGES as _UNUSED_ERROR_MESSAGES, SUCCESS_MESSAGES as _UNUSED_SUCCESS_MESSAGES
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -210,12 +210,12 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         summary += "📝 Message was sent to all groups\n\n"
     
     if failed_users:
-        summary += f"❌ Failed to send to users:\n"
+        summary += "❌ Failed to send to users:\n"
         summary += "\n".join(f"• {user}" for user in failed_users[:5])
         if len(failed_users) > 5:
             summary += f"\n... and {len(failed_users) - 5} more users"
     
-    summary += f"\n\n📊 User Statistics:\n"
+    summary += "\n\n📊 User Statistics:\n"
     summary += f"• Successfully sent: {user_success_count}\n"
     summary += f"• Failed to send: {user_failure_count}\n"
     

@@ -1,15 +1,10 @@
-from telegram import Update, Message
+from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 import logging
-from typing import Optional, Tuple
-from datetime import datetime
-import asyncio
 import traceback
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
-from solana.rpc.types import TokenAccountOpts
-from spl.token.instructions import get_associated_token_address
 from solders.pubkey import Pubkey
 from solders.keypair import Keypair
 from spl.token.client import Token
@@ -18,13 +13,9 @@ from base58 import b58decode
 from config import (
     SOLANA_RPC_URL,
     SQR_TOKEN_MINT,
-    RECIPIENT_WALLET,
     TOKEN_PROGRAM_ID,
     TEXT_SUMMARY_COST,
-    AUDIO_SUMMARY_COST,
-    TRANSACTION_TIMEOUT_MINUTES,
-    ERROR_MESSAGES,
-    SUCCESS_MESSAGES
+    AUDIO_SUMMARY_COST
 )
 import httpx
 
@@ -223,7 +214,7 @@ async def sqr_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = token_info.get('data', {}).get('attributes', {})
         
         # Format the response
-        info_text = f"<b>💰 SQR Token Information</b>\n\n"
+        info_text = "<b>💰 SQR Token Information</b>\n\n"
         info_text += f"• Price: ${data.get('price_usd', 'N/A')}\n"
         info_text += f"• 24h Change: {data.get('price_change_percentage', {}).get('h24', 'N/A')}%\n"
         info_text += f"• Market Cap: ${data.get('market_cap_usd', 'N/A')}\n"
@@ -232,7 +223,7 @@ async def sqr_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         info_text += f"• Total Supply: {data.get('total_supply', 'N/A')} SQR\n"
         info_text += f"• Circulating Supply: {data.get('circulating_supply', data.get('total_supply', 'N/A'))} SQR\n\n"
         info_text += f"<b>Token Address:</b>\n{SQR_TOKEN_MINT}\n\n"
-        info_text += f"<b>Use Cases:</b>\n"
+        info_text += "<b>Use Cases:</b>\n"
         info_text += f"• X Space Text summary: {TEXT_SUMMARY_COST} SQR\n"
         info_text += f"• X Space Audio summary: {AUDIO_SUMMARY_COST} SQR"
         

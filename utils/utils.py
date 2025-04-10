@@ -60,7 +60,7 @@ async def get_webpage_content(url: str) -> Optional[str]:
             
     except httpx.HTTPError as e:
         logger.error(f"HTTP error fetching {url}: {str(e)}")
-        raise TransientError(f"HTTP error: {str(e)}")
+        raise TransientError(f"HTTP error: {str(e)}") from e
     except Exception as e:
         logger.error(f"Error fetching {url}: {str(e)}")
         raise TransientError(f"Error fetching content: {str(e)}")
@@ -90,7 +90,7 @@ async def resolve_sns_domain(domain: str) -> Optional[str]:
         logger.error(f"Response status code: {e.response.status_code if hasattr(e, 'response') else 'N/A'}")
         logger.error(f"Response headers: {e.response.headers if hasattr(e, 'response') else 'N/A'}")
         logger.error(f"Response body: {e.response.text if hasattr(e, 'response') else 'N/A'}")
-        raise TransientError(f"HTTP error: {str(e)}")
+        raise TransientError(f"HTTP error: {str(e)}") from e
     except Exception as e:
         logger.error(f"Error resolving SNS domain {domain}: {str(e)}")
         logger.error(f"Error type: {type(e)}")
@@ -110,7 +110,7 @@ async def get_sqr_info() -> Optional[dict]:
             return response.json()
     except httpx.HTTPError as e:
         logger.error(f"HTTP error fetching SQR info: {str(e)}")
-        raise TransientError(f"HTTP error: {str(e)}")
+        raise TransientError(f"HTTP error: {str(e)}") from e
     except Exception as e:
         logger.error(f"Error fetching SQR info: {str(e)}")
         raise TransientError(f"Error fetching token info: {str(e)}")

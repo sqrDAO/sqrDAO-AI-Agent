@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from typing import Optional
 import logging
-from config import ERROR_MESSAGES, SUCCESS_MESSAGES
+from config import ERROR_MESSAGES as _UNUSED_ERROR_MESSAGES, SUCCESS_MESSAGES as _UNUSED_SUCCESS_MESSAGES
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +106,7 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def website_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /website command."""
     knowledge = context.bot_data['db'].get_knowledge("website")
-    if knowledge:
-        website_text = knowledge[0]
-    else:
-        website_text = "Visit sqrDAO at https://sqrdao.com"
+    website_text = knowledge[0] if knowledge else "Visit sqrDAO at https://sqrdao.com"
 
     knowledge = context.bot_data['db'].get_knowledge("sqrfund")
     if knowledge:
