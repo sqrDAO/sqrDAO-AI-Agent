@@ -565,18 +565,30 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    custom_prompt = " ".join(context.args)  # Join the arguments to form the custom prompt
-    space_url = context.user_data.get('space_url')
+    # Join the arguments to form the custom prompt
+    full_prompt = " ".join(context.args)
 
-    if not space_url:
+    # Extract the space URL and the custom prompt
+    parts = full_prompt.split(" ", 1)  # Split into two parts: URL and the rest
+    if len(parts) < 2:
         await update.message.reply_text(
-            "❌ No space URL found. Please summarize a space first.",
+            "❌ Please provide both the space URL and the edit prompt.",
             parse_mode=ParseMode.HTML
         )
         return
 
-    # Extract the space ID from the URL
-    space_id = space_url.split('/')[-1]  # Assuming the URL ends with the space ID
+    space_url = parts[0]  # The first part is the space URL
+    custom_prompt = parts[1]  # The rest is the custom prompt
+    logger.info("Custom prompt: %s", custom_prompt)
+    logger.info("Space URL: %s", space_url)
+
+    # Validate the space URL format
+    if not (space_url.startswith("https://x.com/i/spaces/") or space_url.startswith("https://x.com/i/broadcasts/")):
+        await update.message.reply_text(
+            "❌ Invalid space URL format. Please provide a valid URL.",
+            parse_mode=ParseMode.HTML
+        )
+        return
 
     # Make the API call to summarize with the custom prompt
     api_key = os.getenv('SQR_FUND_API_KEY')
@@ -593,20 +605,46 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "X-API-Key": api_key
     }
     payload = {
-        "spacesUrl": f"https://x.com/i/spaces/{space_id}",
+        "spacesUrl": space_url,
         "customPrompt": custom_prompt
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(api_url, headers=headers, json=payload)
-        if response.status_code == 200:
-            summary_data = response.json()
-            await update.message.reply_text(
-                f"✅ Edited Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await update.message.reply_text(
-                f"❌ Failed to edit summary: {response.text}",
-                parse_mode=ParseMode.HTML
-            ) 
+    # Send a processing message
+    processing_msg = await update.message.reply_text(
+        "🔄 Processing your edit request...",
+        parse_mode=ParseMode.HTML
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:  # Increase timeout to 60 seconds
+            response = await client.post(api_url, headers=headers, json=payload)
+            if response.status_code == 200:
+                summary_data = response.json()
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=processing_msg.message_id,
+                    text=f"✅ Edited Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=processing_msg.message_id,
+                    text=f"❌ Failed to edit summary: {response.text}",
+                    parse_mode=ParseMode.HTML
+                )
+    except httpx.ReadTimeout:
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_msg.message_id,
+            text="❌ The request to edit the summary timed out. Please try again later.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error during API call: {str(e)}")
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_msg.message_id,
+            text="❌ An unexpected error occurred while trying to edit the summary. Please try again later.",
+            parse_mode=ParseMode.HTML
+        ) 
