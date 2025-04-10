@@ -68,7 +68,7 @@ SUCCESS_MESSAGES = {
 # Announcement Prefixes
 ANNOUNCEMENT_PREFIXES = {
     'sqrdao': "📢 <b>Announcement from sqrDAO:</b>",
-    'summit': "📢 <b>Announcement from sqrDAO:</b>",
+    'summit': "📢 <b>Announcement from Web3 Builders' Summit:</b>",
     'sqrfund': "📢 <b>Announcement from sqrFUND:</b>",
     'default': "📢 <b>Announcement:</b>"
 }

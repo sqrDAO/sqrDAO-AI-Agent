@@ -262,7 +262,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
     except httpx.HTTPError as e:
         raise TransientError(f"Failed to check job status: {str(e)}") from e
     except ValueError as e:
-        raise PermanentError(f"Invalid response format: {str(e)}")
+        raise PermanentError(f"Invalid response format: {str(e)}") from e
 
 async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Optional[str], Optional[str]]:
     """Convert text to audio using Google Text-to-Speech."""
