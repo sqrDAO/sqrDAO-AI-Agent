@@ -17,20 +17,19 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         # First escape all HTML special characters
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         
-        # Then convert markdown-style formatting to HTML with proper tag pairs
+        # Use regex to handle markdown-style formatting
         # Handle bold text
-        text = text.replace('**', '<b>').replace('**', '</b>')
+        text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
         # Handle italic text
-        text = text.replace('*', '<i>').replace('*', '</i>')
+        text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)
         # Handle underlined text
-        text = text.replace('__', '<u>').replace('__', '</u>')
+        text = re.sub(r'__(.*?)__', r'<u>\1</u>', text)
         # Handle code blocks
-        text = text.replace('```', '<pre>').replace('```', '</pre>')
+        text = re.sub(r'```(.*?)```', r'<pre>\1</pre>', text, flags=re.DOTALL)
         # Handle inline code
-        text = text.replace('`', '<code>').replace('`', '</code>')
+        text = re.sub(r'`(.*?)`', r'<code>\1</code>', text)
         
         # Remove any unsupported HTML tags
-        # E.g., keep <b>, <i>, <u>, <pre>, <code>
         allowed_tags = ['b', 'i', 'u', 'pre', 'code']
         text = re.sub(
             rf'</?(?!({"|".join(allowed_tags)}))[^>]*>',

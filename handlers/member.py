@@ -24,7 +24,7 @@ async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Store the user ID in pending_requests
     if 'pending_requests' not in context.bot_data:
         context.bot_data['pending_requests'] = {}
-        
+
     if user.username:
         context.bot_data['pending_requests'][user.username] = {
             'user_id': user_id,
@@ -73,7 +73,8 @@ async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     username = context.args[0].strip('@')
-    if username not in context.bot_data['pending_requests']:
+    pending_requests = context.bot_data.get('pending_requests', {})
+    if username not in pending_requests:
         await update.message.reply_text(
             "❌ No pending request found for this username.",
             parse_mode=ParseMode.HTML

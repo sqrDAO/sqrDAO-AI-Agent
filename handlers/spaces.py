@@ -7,9 +7,7 @@ from datetime import datetime, timedelta
 import asyncio
 import httpx
 import os
-import requests
 import uuid
-import aiofiles
 from gtts import gTTS
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
