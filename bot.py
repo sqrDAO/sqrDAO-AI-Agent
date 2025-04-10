@@ -187,16 +187,17 @@ async def process_message_with_context(message, context):
     words = message.lower().split()
     keywords = [re.sub(r'\W+', '', word) for word in words if len(word) > 2]  # Strip special characters
     keywords = [word for word in keywords if word]  # Remove empty strings
-    # Get relevant knowledge using a single query with the most significant keywords
+
+    # Get relevant knowledge using multiple significant keywords
     knowledge_text = ""
     if keywords:
-        # Use the longest keyword for knowledge retrieval
-        main_keyword = max(keywords, key=len)
-        knowledge = db.get_knowledge(main_keyword)
-        if knowledge:
-            knowledge_text = "\nStored knowledge:\n"
-            for info in knowledge:
-                knowledge_text += f"• {info}\n"
+        # Retrieve knowledge for each keyword and aggregate results
+        knowledge_text = "\nStored knowledge:\n"
+        for keyword in set(keywords):  # Use a set to avoid duplicate queries
+            knowledge = db.get_knowledge(keyword)
+            if knowledge:
+                for info in knowledge:
+                    knowledge_text += f"• {info}\n"
 
     # Format context properly
     context_text = ""
