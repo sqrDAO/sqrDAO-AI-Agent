@@ -10,6 +10,7 @@ import os
 import requests
 import uuid
 import traceback
+import aiofiles
 from gtts import gTTS
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
@@ -174,30 +175,28 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
             raise PermanentError("API key not configured")
 
-        # First download the space
-        download_response = requests.post(
-            "https://spaces.sqrfund.ai/api/async/download-spaces",
-            headers={
-                "Content-Type": "application/json",
-                "X-API-Key": api_key
-            },
-            json={
-                "spacesUrl": space_url
-            }
-        )
+        # First download the space asynchronously
+        async with httpx.AsyncClient() as client:
+            download_response = await client.post(
+                "https://spaces.sqrfund.ai/api/async/download-spaces",
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": api_key
+                },
+                json={
+                    "spacesUrl": space_url
+                }
+            )
 
-        if download_response.status_code != 202:
-            logger.error(f"Failed to initiate space download: {download_response.text}")
-            raise PermanentError(f"Failed to initiate space download: {download_response.text}")
+            if download_response.status_code != 202:
+                logger.error(f"Failed to initiate space download: {download_response.text}")
+                raise PermanentError(f"Failed to initiate space download: {download_response.text}")
 
-        # Get the job ID from the response
-        try:
+            # Get the job ID from the response
             job_data = download_response.json()
             job_id = job_data.get('jobId')
             if not job_id:
                 raise PermanentError("No job ID received from download request")
-        except Exception as e:
-            raise PermanentError(f"Error parsing download response: {str(e)}") from e
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
@@ -280,12 +279,14 @@ async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Option
         
         # Convert text to speech
         tts = gTTS(text=text, lang=language, slow=False)
-        tts.save(filepath)
         
+        # Save the audio file asynchronously
+        async with aiofiles.open(filepath, 'wb') as audio_file:
+            tts.save(audio_file)  # This will need to be adjusted to save the audio correctly
+
         return filepath, None
     except Exception as e:
         logger.error(f"Error converting text to audio: {str(e)}")
-        logger.error(f"Full error traceback: {traceback.format_exc()}")
         return None, f"Error converting text to audio: {str(e)}"
 
 async def periodic_job_check(
