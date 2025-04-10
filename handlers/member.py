@@ -41,6 +41,8 @@ async def request_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
     # Notify authorized members
+    if 'authorized_members' not in context.bot_data:
+        context.bot_data['authorized_members'] = []
     for member in context.bot_data['authorized_members']:
         try:
             await context.bot.send_message(
@@ -89,6 +91,8 @@ async def approve_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'username': username,
         'user_id': user_id
     }
+    if 'members' not in context.bot_data:
+        context.bot_data['members'] = []
     context.bot_data['members'].append(new_member)
     
     # Store the member in the knowledge base
@@ -185,7 +189,7 @@ async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
         return
 
-    if not context.bot_data['members']:
+    if not context.bot_data.get('members', []):
         await update.message.reply_text(
             "📝 No members found.",
             parse_mode=ParseMode.HTML
@@ -237,7 +241,7 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
         return
 
-    if not context.bot_data['group_members']:
+    if not context.bot_data.get('group_members', []):
         await update.message.reply_text(
             "📝 No groups are currently being tracked.",
             parse_mode=ParseMode.HTML
