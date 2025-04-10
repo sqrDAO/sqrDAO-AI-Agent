@@ -20,7 +20,8 @@ from config import (
     JOB_CHECK_TIMEOUT_SECONDS,
     MAX_JOB_CHECK_ATTEMPTS,
     RECIPIENT_WALLET,
-    SOLANA_RPC_URL
+    SOLANA_RPC_URL,
+    SQR_TOKEN_MINT
 )
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             
             # Find the token transfer amount by comparing pre and post balances
             transfer_amount = 0
-            target_mint = os.getenv('SQR_TOKEN_MINT')
+            target_mint = SQR_TOKEN_MINT
             
             for post_balance in post_balances:
                 if str(post_balance.mint) == target_mint:
