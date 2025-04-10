@@ -257,7 +257,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             elif job_status == 'failed':
                 raise PermanentError(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
             else:
-                raise TransientError("Job still processing") from e
+                raise TransientError("Job still processing")
             
     except httpx.HTTPError as e:
         raise TransientError(f"Failed to check job status: {str(e)}") from e

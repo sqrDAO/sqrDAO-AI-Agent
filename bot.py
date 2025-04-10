@@ -234,11 +234,8 @@ def main():
         # Initialize bot data
         application.bot_data['db'] = Database()  # Initialize database
         application.bot_data['authorized_members'] = load_authorized_members(application.bot_data['db'])  # Load authorized members
-        application.bot_data['members'] = []  # List of regular members
-        application.bot_data['group_members'] = []  # List of tracked groups
-        application.bot_data['pending_requests'] = {}  # Dictionary of pending member requests
 
-        # Load initial data from database if available
+        # Load initial data from database
         try:
             # Load members from database
             members_data = application.bot_data['db'].get_knowledge("members")
@@ -255,6 +252,8 @@ def main():
                 application.bot_data['group_members'] = []
         except Exception as e:
             logger.error(f"Error loading initial data: {str(e)}")
+            application.bot_data['members'] = []  # Fallback to empty list
+            application.bot_data['group_members'] = []  # Fallback to empty list
 
         # Add command handlers
         application.add_handler(CommandHandler("start", start))
