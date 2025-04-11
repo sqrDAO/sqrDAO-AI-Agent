@@ -252,6 +252,9 @@ async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Option
         logger.error(f"Error converting text to audio: {str(e)}")
         return None, f"Error converting text to audio: {str(e)}"
 
+# Create a dictionary to hold locks for each job ID
+job_locks = {}
+
 async def periodic_job_check(
     context: ContextTypes.DEFAULT_TYPE,
     job_id: str,
@@ -263,116 +266,121 @@ async def periodic_job_check(
     check_interval: int = JOB_CHECK_TIMEOUT_SECONDS
 ) -> None:
     """Periodically check the status of a summarization job with improved error handling."""
-    start_time = datetime.now()
-    attempts = 0
-    summarization_initiated = False  # Flag to track if summarization has been initiated
+    # Create or get the lock for this job_id
+    if job_id not in job_locks:
+        job_locks[job_id] = asyncio.Lock()
     
-    while attempts < max_attempts:
-        try:
-            success, result = await check_job_status(job_id, space_url)
-            
-            if success:
-                if request_type == 'audio':
-                    # Convert text to audio
-                    audio_path, error = await convert_text_to_audio(result)
-                    if audio_path and not error:
-                        with open(audio_path, 'rb') as audio_file:
-                            await context.bot.send_audio(
+    async with job_locks[job_id]:  # Acquire the lock
+        start_time = datetime.now()
+        attempts = 0
+        summarization_initiated = False  # Flag to track if summarization has been initiated
+        
+        while attempts < max_attempts:
+            try:
+                success, result = await check_job_status(job_id, space_url)
+                
+                if success:
+                    if request_type == 'audio':
+                        # Convert text to audio
+                        audio_path, error = await convert_text_to_audio(result)
+                        if audio_path and not error:
+                            with open(audio_path, 'rb') as audio_file:
+                                await context.bot.send_audio(
+                                    chat_id=chat_id,
+                                    audio=audio_file,
+                                    caption="✅ Audio summary completed!",
+                                    parse_mode=ParseMode.HTML
+                                )
+                            # Clean up the temporary audio file
+                            try:
+                                os.remove(audio_path)
+                            except Exception as e:
+                                logger.error(f"Error cleaning up audio file: {str(e)}")
+                        else:
+                            await context.bot.edit_message_text(
                                 chat_id=chat_id,
-                                audio=audio_file,
-                                caption="✅ Audio summary completed!",
+                                message_id=message_id,
+                                text=f"❌ Failed to convert summary to audio: {error}",
                                 parse_mode=ParseMode.HTML
                             )
-                        # Clean up the temporary audio file
-                        try:
-                            os.remove(audio_path)
-                        except Exception as e:
-                            logger.error(f"Error cleaning up audio file: {str(e)}")
                     else:
-                        await context.bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=message_id,
-                            text=f"❌ Failed to convert summary to audio: {error}",
-                            parse_mode=ParseMode.HTML
-                        )
-                else:
-                    if not summarization_initiated:  # Check if summarization has already been initiated
-                        summarization_initiated = True  # Set the flag to true
-                        await context.bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=message_id,
-                            text=f"✅ Summary completed!\n\n{result}\n\n"
-                                 "If you would like to make suggestions or edits, use the command /edit_summary.",
-                            parse_mode=ParseMode.HTML
-                        )
-                    else:
-                        logger.warning("Summarization already initiated, skipping further calls.")
+                        if not summarization_initiated:  # Check if summarization has already been initiated
+                            summarization_initiated = True  # Set the flag to true
+                            await context.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=message_id,
+                                text=f"✅ Summary completed!\n\n{result}\n\n"
+                                     "If you would like to make suggestions or edits, use the command /edit_summary.",
+                                parse_mode=ParseMode.HTML
+                            )
+                        else:
+                            logger.warning("Summarization already initiated, skipping further calls.")
+                    
+                    reset_user_data(context)
+                    return
                 
-                reset_user_data(context)
-                return
-            
-            # Check for 502 error
-            if result.startswith("⚠️ <b>Summarization Service Temporarily Unavailable</b>"):
-                logger.error("Received 502 Server Error during summarization")
+                # Check for 502 error
+                if result.startswith("⚠️ <b>Summarization Service Temporarily Unavailable</b>"):
+                    logger.error("Received 502 Server Error during summarization")
+                    await context.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=result,  # Send the error message to the user
+                        parse_mode=ParseMode.HTML
+                    )
+                    return  # Exit the function after sending the message
+                
+                # Check if we've exceeded the total time limit
+                if datetime.now() - start_time > timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES):
+                    raise JobTimeoutError("Job processing timeout reached")
+                
+                # Update status message
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=result,  # Send the error message to the user
+                    text=f"⏳ Processing... (Attempt {attempts + 1}/{max_attempts})",
                     parse_mode=ParseMode.HTML
                 )
-                return  # Exit the function after sending the message
-            
-            # Check if we've exceeded the total time limit
-            if datetime.now() - start_time > timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES):
-                raise JobTimeoutError("Job processing timeout reached")
-            
-            # Update status message
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"⏳ Processing... (Attempt {attempts + 1}/{max_attempts})",
-                parse_mode=ParseMode.HTML
-            )
-            
-            # Wait before next check
-            await asyncio.sleep(check_interval)
-            attempts += 1
-            
-        except TransientError as e:
-            logger.warning(f"Transient error in job check: {str(e)}")
-            attempts += 1
-            await asyncio.sleep(check_interval)
-            
-        except (PermanentError, JobTimeoutError) as e:
-            logger.error(f"Permanent error in job check: {str(e)}")
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"❌ Error: {str(e)}",
-                parse_mode=ParseMode.HTML
-            )
-            reset_user_data(context)
-            return
-            
-        except Exception as e:
-            logger.error(f"Unexpected error in job check: {str(e)}")
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text="❌ An unexpected error occurred. Please try again later.",
-                parse_mode=ParseMode.HTML
-            )
-            reset_user_data(context)
-            return
-    
-    # Max attempts reached
-    await context.bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=message_id,
-        text="❌ Timeout: Could not complete summarization in time.",
-        parse_mode=ParseMode.HTML
-    )
-    reset_user_data(context)
+                
+                # Wait before next check
+                await asyncio.sleep(check_interval)
+                attempts += 1
+                
+            except TransientError as e:
+                logger.warning(f"Transient error in job check: {str(e)}")
+                attempts += 1
+                await asyncio.sleep(check_interval)
+                
+            except (PermanentError, JobTimeoutError) as e:
+                logger.error(f"Permanent error in job check: {str(e)}")
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"❌ Error: {str(e)}",
+                    parse_mode=ParseMode.HTML
+                )
+                reset_user_data(context)
+                return
+                
+            except Exception as e:
+                logger.error(f"Unexpected error in job check: {str(e)}")
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="❌ An unexpected error occurred. Please try again later.",
+                    parse_mode=ParseMode.HTML
+                )
+                reset_user_data(context)
+                return
+        
+        # Max attempts reached
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text="❌ Timeout: Could not complete summarization in time.",
+            parse_mode=ParseMode.HTML
+        )
+        reset_user_data(context)
 
 async def handle_successful_transaction(
     context: ContextTypes.DEFAULT_TYPE,
