@@ -71,8 +71,6 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /list_requests - View pending member requests
 • /list_members - List all current members
 • /list_groups - List all tracked groups
-• /add_group - Add a group to the bot's tracking list
-• /remove_group - Remove a group from the bot's tracking list
 """
 
     help_text += """

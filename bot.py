@@ -4,7 +4,7 @@ import logging
 import google.generativeai as genai
 import traceback
 from dotenv import load_dotenv
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 from telegram import Update, Message
 from telegram.constants import ParseMode
 import re
@@ -18,7 +18,7 @@ from handlers.general import (
 from handlers.member import (
     request_member, approve_member, reject_member,
     list_requests, list_members, resources_command,
-    list_groups, add_group, remove_group
+    list_groups
 )
 from handlers.knowledge import (
     learn_command, bulk_learn_command, learn_from_url
@@ -94,11 +94,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get('space_url') and not context.user_data.get('awaiting_signature'):
             logger.info("Ignoring message during space summarization process.")
             return
-
+        
+        logger.info(f"Message: {message.chat.type}")
         # Process the message based on chat type
         if message.chat.type == 'private':
+            logger.info(f"Private message: {message.text} from {message.from_user.username}")
             await handle_private_message(message, context)
         else:
+            logger.info(f"Group message: {message.text} from {message.from_user.username}")
             await handle_group_message(message, context)
 
     except Exception as e:
@@ -136,7 +139,10 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
             return
 
         # Check if the bot is mentioned in the message
-        if context.bot.username not in [mention.username for mention in message.entities if mention.type == 'mention']:
+        if context.bot.username not in [
+            mention.user.username for mention in message.entities 
+            if mention.type == 'mention' and mention.user is not None
+        ]:
             logger.info("Bot not mentioned in the message. Ignoring.")
             return
 
@@ -238,6 +244,34 @@ async def process_message_with_context(message, context):
     except Exception as e:
         return "I encountered an error while processing your message. Please try again."
 
+async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle updates to chat member status."""
+    try:
+        # Log the received update for debugging
+        logger.info(f"Received chat member update: {update}")
+
+        # Check if the update contains my_chat_member
+        if not update.my_chat_member:
+            logger.warning("Received update does not contain my_chat_member.")
+            return
+
+        chat_member = update.my_chat_member
+        chat_id = chat_member.chat.id
+
+        # Check the bot's new membership status
+        if chat_member.new_chat_member.status == "member":
+            # Bot was added to the group
+            # Update the groups table in the database
+            db.add_group(chat_id, chat_member.chat.title, context.bot_data)
+
+        elif chat_member.new_chat_member.status == "left":
+            # Bot was removed from the group
+            # Update the groups table in the database
+            db.remove_group(chat_id, context.bot_data)
+
+    except Exception as e:
+        logger.error(f"Error handling chat member update: {str(e)}")
+
 def main():
     """Main function to run the bot."""
     try:
@@ -268,11 +302,29 @@ def main():
 
             # Load groups from database
             groups_data = application.bot_data['db'].get_knowledge("groups")
-            if groups_data and groups_data[0]:
-                application.bot_data['group_members'] = groups_data[0]
-            else:
+            logger.info(f"Groups data: {groups_data}")
+
+            # Check if groups_data is empty or not in expected format
+            if not groups_data or not isinstance(groups_data, list):
+                logger.warning("No groups data found or data is not in expected format.")
+                application.bot_data['group_members'] = []
+                return
+
+            try:
+                # Get the last element which contains the most recent group data
+                if isinstance(groups_data[-1], list) and groups_data[-1]:
+                    # Get the first element of the last list which contains the actual group data
+                    group_list = groups_data[-1][0]
+                    application.bot_data['group_members'] = group_list
+                    logger.info(f"Group members: {application.bot_data['group_members']}")
+                else:
+                    logger.warning("Last element is not a list or is empty.")
+                    application.bot_data['group_members'] = []
+            except Exception as e:
+                logger.error(f"Error processing groups data: {str(e)}")
                 application.bot_data['group_members'] = []
         except Exception as e:
+            logger.error(f"Error loading groups data: {str(e)}")
             application.bot_data['members'] = []  # Fallback to empty list
             application.bot_data['group_members'] = []  # Fallback to empty list
 
@@ -296,8 +348,6 @@ def main():
         application.add_handler(CommandHandler("reject_member", reject_member))
         application.add_handler(CommandHandler("list_requests", list_requests))
         application.add_handler(CommandHandler("list_groups", list_groups))
-        application.add_handler(CommandHandler("add_group", add_group))
-        application.add_handler(CommandHandler("remove_group", remove_group))
         application.add_handler(CommandHandler("mass_message", mass_message))
         application.add_handler(CommandHandler("cancel", cancel_command))
         application.add_handler(CommandHandler("edit_summary", edit_summary))
@@ -319,6 +369,9 @@ def main():
         application.add_handler(MessageHandler(
             filters.VIDEO & filters.CaptionRegex(r'^/mass_message') & filters.COMMAND, mass_message
         ))
+
+        # Add chat member update handler
+        application.add_handler(ChatMemberHandler(handle_chat_member_update))
 
         # Set bot commands
         commands = [

@@ -214,6 +214,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                     "promptType": "formatted"
                 }
             )
+
+            logger.info(f"Summary response: {summary_response}")
             
             if summary_response[0]:
                 summary_data = summary_response[1]
@@ -396,7 +398,7 @@ async def handle_successful_transaction(
     """Handle a successful transaction with improved error handling."""
     try:
         processing_msg = await message.reply_text(
-            "⏳ Processing your request...",
+            "⏳ Processing your request... This may take up to 5 minutes.",
             parse_mode=ParseMode.HTML
         )
 
