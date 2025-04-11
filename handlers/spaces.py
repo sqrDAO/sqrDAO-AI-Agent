@@ -214,12 +214,11 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                     "promptType": "formatted"
                 }
             )
-
-            logger.info(f"Summary response: {summary_response}")
             
             if summary_response[0]:
                 summary_data = summary_response[1]
-                return True, summary_data.get('summary', '✅ Space summarized successfully!')
+                summary_text = summary_data.get('summary', '✅ Space summarized successfully!')
+                return True, summary_text  # Return as a single part
             else:
                 logger.error(f"Failed to summarize space: {summary_response[2]}")
                 return False, f"❌ Failed to summarize space: {summary_response[2]}"
@@ -310,17 +309,37 @@ async def periodic_job_check(
                                 parse_mode=ParseMode.HTML
                             )
                     else:
-                        if not summarization_initiated:  # Check if summarization has already been initiated
-                            summarization_initiated = True  # Set the flag to true
+                        # Handle the summary text
+                        summary_text = result  # Use the single result if not a list
+                        logger.info(f"Summary text: {summary_text}, length: {len(summary_text)}")
+
+                        # Check if the summary exceeds 4096 characters
+                        if len(summary_text) > 4000:
+                            # Split the summary into parts
+                            parts = [summary_text[i:i + 4000] for i in range(0, len(summary_text), 4000)]
+                            logger.info(f"Summary parts: {parts}")
+                            for count, part in enumerate(parts, 1):
+                                logger.info(f"Summary part {count}: {part}")
+                                await context.bot.edit_message_text(
+                                    chat_id=chat_id,
+                                    message_id=message_id,
+                                    text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",
+                                    parse_mode=ParseMode.HTML
+                                )
                             await context.bot.edit_message_text(
                                 chat_id=chat_id,
                                 message_id=message_id,
-                                text=f"✅ Summary completed!\n\n{result}\n\n"
-                                     "If you would like to make suggestions or edits, use the command /edit_summary.",
+                                text="If you would like to make suggestions or edits, use the command /edit_summary.",
                                 parse_mode=ParseMode.HTML
                             )
                         else:
-                            logger.warning("Summarization already initiated, skipping further calls.")
+                            await context.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=message_id,
+                                text=f"✅ Summary completed!\n\n{summary_text}\n\n"
+                                     "If you would like to make suggestions or edits, use the command /edit_summary.",
+                                parse_mode=ParseMode.HTML
+                            )
                     
                     reset_user_data(context)
                     return

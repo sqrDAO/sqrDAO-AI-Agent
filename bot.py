@@ -302,7 +302,6 @@ def main():
 
             # Load groups from database
             groups_data = application.bot_data['db'].get_knowledge("groups")
-            logger.info(f"Groups data: {groups_data}")
 
             # Check if groups_data is empty or not in expected format
             if not groups_data or not isinstance(groups_data, list):
@@ -316,7 +315,6 @@ def main():
                     # Get the first element of the last list which contains the actual group data
                     group_list = groups_data[-1][0]
                     application.bot_data['group_members'] = group_list
-                    logger.info(f"Group members: {application.bot_data['group_members']}")
                 else:
                     logger.warning("Last element is not a list or is empty.")
                     application.bot_data['group_members'] = []
