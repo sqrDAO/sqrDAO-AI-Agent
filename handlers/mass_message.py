@@ -9,6 +9,11 @@ logger = logging.getLogger(__name__)
 
 async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /mass_message command - Send a message with optional image, video, or document to all users and groups."""
+    # Check if effective_user is None
+    if update.effective_user is None:
+        await update.message.reply_text("❌ This command can only be used by users.")
+        return
+
     if not find_authorized_member_by_username(update.effective_user['username'], context):
         await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
         return

@@ -189,15 +189,18 @@ async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ You are not authorized to use this command.", parse_mode=ParseMode.HTML)
         return
 
-    if not context.bot_data.get('members', []):
+    members = context.bot_data.get('members', [])
+
+    if not members:
         await update.message.reply_text(
             "📝 No members found.",
             parse_mode=ParseMode.HTML
         )
+        logger.info("No members found in the list.")  # Log when no members are found
         return
         
     members_text = "<b>Current Members:</b>\n\n"
-    for member in context.bot_data['members']:
+    for member in members:
         try:
             # Handle dictionary format
             if isinstance(member, dict):
