@@ -9,7 +9,6 @@ from telegram import Update, Message
 from telegram.constants import ParseMode
 import re
 import telegram
-import ast
 
 # Import handlers from other modules
 from handlers.general import (
@@ -258,7 +257,6 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 
         chat_member = update.my_chat_member
         chat_id = chat_member.chat.id
-        bot_user_id = context.bot.id
 
         # Check the bot's new membership status
         if chat_member.new_chat_member.status == "member":

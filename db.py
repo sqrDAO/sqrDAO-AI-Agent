@@ -107,17 +107,46 @@ class Database:
         """Close the database connection."""
         self.conn.close()
 
-    def add_group(self, chat_id, groupname, bot_data):
-        """Add the group to the 'groups' table and update bot_data."""
+    def add_group(self, chat_id, groupname, bot_data) -> bool:
+        """Add the group to the 'groups' table and update bot_data.
+        
+        Args:
+            chat_id: The ID of the group to add
+            groupname: The name of the group
+            bot_data: The bot's data structure to update
+            
+        Returns:
+            bool: True if the group was successfully added, False otherwise
+        """
         try:
+            # Input validation
+            if not groupname or not str(groupname).strip():
+                logger.error("Invalid groupname: cannot be empty or whitespace")
+                return False
+                
+            if not isinstance(chat_id, (int, str)):
+                logger.error(f"Invalid chat_id type: {type(chat_id)}")
+                return False
+                
+            # Convert chat_id to integer if it's a string
+            try:
+                chat_id = int(chat_id)
+            except (ValueError, TypeError):
+                logger.error(f"Invalid chat_id format: {chat_id}")
+                return False
+
             # Retrieve existing groups
             existing_groups = self.get_knowledge("groups")
             if isinstance(existing_groups, str):
-                existing_groups = json.loads(existing_groups)  # Parse if it's a JSON string
+                try:
+                    existing_groups = json.loads(existing_groups)
+                except json.JSONDecodeError:
+                    logger.error("Failed to parse existing groups from knowledge base")
+                    return False
 
             # Flatten the nested list if necessary
             if isinstance(existing_groups, list) and len(existing_groups) > 0:
-                existing_groups = existing_groups[0]  # Get the first (and only) list
+                existing_groups = existing_groups[0]
 
             # Log the type and content of existing_groups
             logger.info(f"Existing groups: {existing_groups} (type: {type(existing_groups)})")
@@ -125,17 +154,17 @@ class Database:
             # Ensure existing_groups is a list
             if not isinstance(existing_groups, list):
                 logger.error(f"Expected a list of groups, but got {type(existing_groups)}")
-                return
+                return False
 
             # Check if the group already exists
             if any(group['id'] == chat_id for group in existing_groups):
-                logger.warning(f"Group {chat_id} already exists in the knowledge base.")
-                return
+                logger.warning(f"Group {chat_id} already exists in the knowledge base")
+                return False
 
             # Add new group with the provided groupname
             new_group = {
                 'id': chat_id,
-                'title': groupname,  # Use the provided groupname
+                'title': str(groupname).strip(),  # Ensure clean string
                 'type': 'group',
                 'added_at': datetime.now().isoformat()
             }
@@ -144,15 +173,20 @@ class Database:
             # Update bot_data
             if 'group_members' not in bot_data:
                 bot_data['group_members'] = []
-            bot_data['group_members'].append(new_group)  # Add the new group to bot_data
+            bot_data['group_members'].append(new_group)
 
             # Store updated groups in the knowledge base
-            self.store_knowledge("groups", json.dumps([existing_groups]))  # Wrap in a list again
-            logger.info(f"Group {chat_id} added to the knowledge base.")
-            logger.info(f"Grouplist after adding group: {self.get_knowledge('groups')}")
+            try:
+                self.store_knowledge("groups", json.dumps([existing_groups]))
+                logger.info(f"Successfully added group {chat_id} ({groupname}) to the knowledge base")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store updated groups in knowledge base: {str(e)}")
+                return False
 
         except Exception as e:
             logger.error(f"Error adding group {chat_id}: {str(e)}")
+            return False
 
     def remove_group(self, chat_id, bot_data):
         """Remove the group from the 'groups' table and update bot_data."""
