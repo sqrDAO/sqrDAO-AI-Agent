@@ -107,6 +107,38 @@ class Database:
         """Close the database connection."""
         self.conn.close()
 
+    def _get_validated_groups(self) -> tuple[list, bool]:
+        """Retrieve and validate existing groups from the knowledge base.
+        
+        Returns:
+            tuple: (existing_groups, success_flag)
+        """
+        try:
+            # Retrieve existing groups
+            existing_groups = self.get_knowledge("groups")
+            
+            # Handle string/JSON parsing
+            if isinstance(existing_groups, str):
+                try:
+                    existing_groups = json.loads(existing_groups)
+                except json.JSONDecodeError:
+                    logger.error("Failed to parse existing groups from knowledge base")
+                    return None, False
+            
+            # Flatten nested list if necessary
+            if isinstance(existing_groups, list) and len(existing_groups) > 0:
+                existing_groups = existing_groups[0]
+            
+            # Ensure existing_groups is a list
+            if not isinstance(existing_groups, list):
+                logger.error(f"Expected a list of groups, but got {type(existing_groups)}")
+                return None, False
+            
+            return existing_groups, True
+        except Exception as e:
+            logger.error(f"Error retrieving groups: {str(e)}")
+            return None, False
+
     def add_group(self, chat_id, groupname, bot_data) -> bool:
         """Add the group to the 'groups' table and update bot_data.
         
@@ -136,24 +168,8 @@ class Database:
                 return False
 
             # Retrieve existing groups
-            existing_groups = self.get_knowledge("groups")
-            if isinstance(existing_groups, str):
-                try:
-                    existing_groups = json.loads(existing_groups)
-                except json.JSONDecodeError:
-                    logger.error("Failed to parse existing groups from knowledge base")
-                    return False
-
-            # Flatten the nested list if necessary
-            if isinstance(existing_groups, list) and len(existing_groups) > 0:
-                existing_groups = existing_groups[0]
-
-            # Log the type and content of existing_groups
-            logger.info(f"Existing groups: {existing_groups} (type: {type(existing_groups)})")
-
-            # Ensure existing_groups is a list
-            if not isinstance(existing_groups, list):
-                logger.error(f"Expected a list of groups, but got {type(existing_groups)}")
+            existing_groups, success = self._get_validated_groups()
+            if not success:
                 return False
 
             # Check if the group already exists
@@ -177,10 +193,13 @@ class Database:
 
             # Store updated groups in the knowledge base
             try:
+                self.conn.begin()
                 self.store_knowledge("groups", json.dumps(existing_groups))
+                self.conn.commit()
                 logger.info(f"Successfully added group {chat_id} ({groupname}) to the knowledge base")
                 return True
             except Exception as e:
+                self.conn.rollback()
                 logger.error(f"Failed to store updated groups in knowledge base: {str(e)}")
                 return False
 
@@ -189,7 +208,14 @@ class Database:
             return False
 
     def remove_group(self, chat_id, bot_data) -> bool:
-        """Remove the group from the 'groups' table and update bot_data."""
+        """Remove the group from the 'groups' table and update bot_data.     
+        Args:
+            chat_id: The ID of the group to remove
+            bot_data: The bot's data structure to update
+            
+        Returns:
+            bool: True if the group was successfully removed, False otherwise
+        """
         try:
             # Ensure chat_id is an integer
             # Validate chat_id type first
@@ -205,29 +231,13 @@ class Database:
                 return False
 
             # Retrieve existing groups
-            existing_groups = self.get_knowledge("groups")
-            logger.info(f"Raw existing groups: {existing_groups}")
-
-            # Check if existing_groups is a list of lists and access the first list
-            if isinstance(existing_groups, str):
-                try:
-                    existing_groups = json.loads(existing_groups)  # Parse if it's a JSON string
-                except json.JSONDecodeError:
-                    logger.error("Failed to parse existing groups from knowledge base")
-                    return False
-
-            # Access the first list of groups
-            if isinstance(existing_groups, list) and len(existing_groups) > 0:
-                existing_groups = existing_groups[0]  # Get the first (and only) list
+            existing_groups, success = self._get_validated_groups()
+            if not success:
+                return False
 
             # Log the type and content of existing_groups
             logger.info(f"Existing groups before removal: {existing_groups} (type: {type(existing_groups)})")
             logger.info(f"Attempting to remove group with chat_id: {chat_id} (type: {type(chat_id)})")
-
-            # Ensure existing_groups is a list
-            if not isinstance(existing_groups, list):
-                logger.error(f"Expected a list of groups, but got {type(existing_groups)}")
-                return False
 
             # Find and remove the group
             updated_groups = [group for group in existing_groups if group['id'] != chat_id]
