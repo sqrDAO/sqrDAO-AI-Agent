@@ -21,7 +21,8 @@ from config import (
     MAX_JOB_CHECK_ATTEMPTS,
     RECIPIENT_WALLET,
     SOLANA_RPC_URL,
-    SQR_TOKEN_MINT
+    SQR_TOKEN_MINT,
+    SQR_PURCHASE_LINK
 )
 
 logger = logging.getLogger(__name__)
@@ -172,18 +173,20 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         if not api_key:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
             raise PermanentError("API key not configured") from None
+        logger.debug("API key is present.")
 
-        async with httpx.AsyncClient() as client:
-            logger.info(f"Checking job status for: {job_id}")
+        async with httpx.AsyncClient(timeout=30.0) as client:  # Add a timeout
+            logger.info(f"Checking job status for job ID: {job_id}")
             response = await client.get(
                 f"https://spaces.sqrfund.ai/api/jobs/{job_id}",
                 headers={"X-API-Key": api_key}
             )
+            
+            # Log the full response for debugging
+            logger.info(f"Full response: {response.status_code}, {response.text}")
+            
             response.raise_for_status()
             data = response.json()
-            
-            # Log the entire response for debugging
-            logger.info(f"Job status response: {data}")
 
             # Check if the response indicates success
             if not data.get('success', False):
@@ -199,6 +202,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             if job_status == 'completed':
                 # Proceed with summarization
                 summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
+
+                logger.info(f"Summarizing space: {space_url}")
                 
                 summary_response = await client.post(
                     summary_url,
@@ -211,8 +216,6 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                         "promptType": "formatted"
                     }
                 )
-
-                logger.info(f"Received response for summarization request: {summary_response.status_code}")
                 
                 if summary_response.status_code == 502:
                     logger.error("Received 502 Server Error during summarization")
@@ -232,14 +235,18 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                     logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
                     return False, f"❌ Failed to summarize space: {summary_response.text}"
             elif job_status == 'failed':
+                logger.error(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
                 raise PermanentError(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
             else:
+                logger.warning(f"Job status is still processing: {job_status}")
                 raise TransientError("Job still processing")
             
     except httpx.HTTPError as e:
+        logger.error(f"HTTP error while checking job status: {str(e)}")
         raise TransientError(f"Failed to check job status: {str(e)}") from e
-    except ValueError as e:
-        raise PermanentError(f"Invalid response format: {str(e)}") from e
+    except Exception as e:
+        logger.error(f"Unexpected error in check_job_status: {str(e)}")
+        raise TransientError(f"Unexpected error: {str(e)}") from e
 
 async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Optional[str], Optional[str]]:
     """Convert text to audio using Google Text-to-Speech."""
@@ -528,7 +535,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'failed_attempts': 0
         })
 
-        purchase_link = os.getenv("SQR_PURCHASE_LINK")
+        purchase_link = SQR_PURCHASE_LINK
         
         await update.message.reply_text(
             "🔄 <b>Space Summarization Process</b>\n\n"
