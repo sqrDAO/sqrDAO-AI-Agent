@@ -72,15 +72,7 @@ The bot automatically detects and tracks groups when:
 
 ### Manual Group Management
 Authorized members can manage groups using the following commands:
-- `/add_group [group_id] [group_name]` - Add a group manually
 - `/list_groups` - View all tracked groups
-- `/remove_group [group_id]` - Remove a group from tracking
-
-### Finding Group IDs
-To find a group ID:
-1. Add @username_to_id_bot to your group
-2. Send `/id` in the group
-3. Use the provided ID with the `/add_group` command
 
 ## Mass Messaging
 
