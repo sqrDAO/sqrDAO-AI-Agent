@@ -23,7 +23,8 @@ from config import (
     RECIPIENT_WALLET,
     SOLANA_RPC_URL,
     SQR_TOKEN_MINT,
-    SQR_PURCHASE_LINK
+    SQR_PURCHASE_LINK,
+    MAX_PROMPT_LENGTH
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ def reset_user_data(context: ContextTypes.DEFAULT_TYPE) -> None:
     })
 
 async def check_transaction_status(signature: str, command_start_time: datetime, 
-                                    space_url: str = None, request_type: str = 'text') -> Tuple[bool, str, Optional[str]]:
+                                    space_url: str = None, request_type: str = 'text') -> Tuple[bool, str]:
     """Check the status of a Solana transaction."""
     try:
         client = AsyncClient(SOLANA_RPC_URL, commitment=Commitment("confirmed"))
@@ -67,7 +68,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             signature_obj = Signature.from_string(signature)
         except Exception as e:
             logger.error(f"Error converting signature format: {str(e)}")
-            return False, f"❌ Error converting signature format: {str(e)}", None
+            return False, f"❌ Error converting signature format: {str(e)}"
 
         # Get transaction details
         tx = await client.get_transaction(
@@ -76,7 +77,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         )
 
         if not tx or not tx.value:
-            return False, "Could not get transaction details", None
+            return False, "Could not get transaction details"
         
         transaction_data = tx.value.transaction
         meta = transaction_data.meta
@@ -84,16 +85,16 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         # Check if transaction was successful
         if not meta:
             logger.error("No meta data found in transaction")
-            return False, "❌ No meta data found in transaction", None
+            return False, "❌ No meta data found in transaction"
             
         if meta.err:
             logger.error(f"Transaction failed with error: {meta.err}")
-            return False, f"❌ Transaction failed: {meta.err}", None
+            return False, f"❌ Transaction failed: {meta.err}"
             
         # Get block time from transaction
         if not tx.value.block_time:
             logger.error("No block time found in transaction")
-            return False, "❌ No block time found in transaction", None
+            return False, "❌ No block time found in transaction"
 
         # Log the raw block time
         logger.info(f"Raw block time from transaction: {tx.value.block_time}")
@@ -109,11 +110,11 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
 
         if time_diff < timedelta(0):
             logger.warning("Transaction was completed before command was issued")
-            return False, "Transaction was completed before the command was issued", None
+            return False, "Transaction was completed before the command was issued"
         elif time_diff > timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES):
             minutes_late = int((time_diff - timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES)).total_seconds() / 60)
             logger.warning(f"Transaction was completed {minutes_late} minutes after deadline")
-            return False, f"Transaction was completed {minutes_late} minutes after the {TRANSACTION_TIMEOUT_MINUTES}-minute window expired", None
+            return False, f"Transaction was completed {minutes_late} minutes after the {TRANSACTION_TIMEOUT_MINUTES}-minute window expired"
             
         # Check token amount using pre and post token balances
         try:
@@ -122,7 +123,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             
             if not pre_balances or not post_balances:
                 logger.error("No token balance information found in transaction")
-                return False, "❌ No token balance information found in transaction", None
+                return False, "❌ No token balance information found in transaction"
             
             # Find the token transfer amount by comparing pre and post balances
             transfer_amount = 0
@@ -154,13 +155,13 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
                 
         except Exception as e:
             logger.error(f"Error checking token amount: {str(e)}")
-            return False, "❌ Error verifying token amount in transaction", None
+            return False, "❌ Error verifying token amount in transaction"
             
-        return True, "Transaction confirmed", None  # If all checks pass
+        return True, "Transaction confirmed", None  # Return the job_id if available
 
     except Exception as e:
         logger.error(f"Error checking transaction: {str(e)}")
-        return False, f"Error checking transaction: {str(e)}", None
+        return False, f"Error checking transaction: {str(e)}"
     finally:
         await client.close()
 
@@ -386,7 +387,6 @@ async def handle_successful_transaction(
     context: ContextTypes.DEFAULT_TYPE,
     message: Message,
     message_text: str,
-    job_id: Optional[str],
     space_url: str,
     request_type: str
 ) -> None:
@@ -474,14 +474,14 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
     logger.info(f"Processing signature: {signature}, Attempt: {attempts}/3")
 
     # Check transaction status
-    success, status_message, job_id = await check_transaction_status(
+    success, status_message = await check_transaction_status(
         signature, command_start_time, space_url, request_type
     )
     
     if success:
         logger.info(f"Signature processed successfully: {signature}")
         await handle_successful_transaction(
-            context, message, message.text, job_id, space_url, request_type
+            context, message, message.text, space_url, request_type
         )
         # Reset attempts after a successful transaction
         context.user_data['signature_attempts'] = 0
@@ -582,7 +582,6 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     custom_prompt = parts[1]
     
     # Validate the length of custom_prompt
-    MAX_PROMPT_LENGTH = 500  # Set a maximum length for the custom prompt
     if len(custom_prompt) > MAX_PROMPT_LENGTH:
         await update.message.reply_text(
             f"❌ Your edit prompt is too long. Please limit it to {MAX_PROMPT_LENGTH} characters.",

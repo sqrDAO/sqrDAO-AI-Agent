@@ -4,7 +4,6 @@ from telegram.constants import ParseMode
 import logging
 from utils.utils import get_announcement_prefix, parse_mass_message_input
 from handlers.general import find_authorized_member_by_username
-import traceback
 
 logger = logging.getLogger(__name__)
 

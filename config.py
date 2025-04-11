@@ -43,6 +43,7 @@ DATABASE_FILE = os.getenv('DATABASE_FILE', 'bot_memory.db')
 # Message Limits
 MAX_MESSAGE_LENGTH = 4000
 MAX_AUDIO_CHUNK_SIZE = 10000
+MAX_PROMPT_LENGTH = 10000
 
 # Error Messages
 ERROR_MESSAGES = {

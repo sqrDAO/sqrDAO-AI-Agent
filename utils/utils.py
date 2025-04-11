@@ -7,7 +7,6 @@ from trafilatura import extract
 from utils.retry import with_retry, TransientError
 from config import ERROR_MESSAGES, SUCCESS_MESSAGES, SQR_TOKEN_MINT
 import json
-import traceback
 import bleach  # Add this import
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,6 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 import logging
-import traceback
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
 from solders.pubkey import Pubkey
@@ -72,7 +71,7 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.HTML
                 )
             return
-        except Exception as e:
+        except Exception:
             await update.message.reply_text(
                 f"❌ Error resolving SNS domain: {input_address}\n"
                 f"Please try again later or use a wallet address instead.",
@@ -108,13 +107,13 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 program_id=token_program_id,
                 payer=dummy_payer
             )
-        except ValueError as ve:
+        except ValueError:
             await update.message.reply_text(
                 "❌ Invalid wallet address format.",
                 parse_mode=ParseMode.HTML
             )
             return
-        except Exception as e:
+        except Exception:
             await update.message.reply_text(
                 "❌ Error validating wallet address.",
                 parse_mode=ParseMode.HTML
@@ -162,7 +161,7 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 token_name = 'Unknown Token'
                 token_symbol = '???'
-        except Exception as e:
+        except Exception:
             token_name = 'Unknown Token'
             token_symbol = '???'
 
@@ -175,7 +174,7 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
-    except Exception as e:
+    except Exception:
         await update.message.reply_text(
             "❌ Error checking balance. Please verify the addresses and try again.",
             parse_mode=ParseMode.HTML
@@ -215,7 +214,7 @@ async def sqr_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(info_text, parse_mode=ParseMode.HTML)
         
-    except Exception as e:
+    except Exception:
         await update.message.reply_text(
             "❌ Error fetching SQR token information. Please try again later.",
             parse_mode=ParseMode.HTML
