@@ -193,13 +193,11 @@ class Database:
 
             # Store updated groups in the knowledge base
             try:
-                self.conn.begin()
-                self.store_knowledge("groups", json.dumps(existing_groups))
-                self.conn.commit()
-                logger.info(f"Successfully added group {chat_id} ({groupname}) to the knowledge base")
-                return True
+                with self.conn:  # Uses connection as context manager which handles commit/rollback
+                    self.store_knowledge("groups", json.dumps(existing_groups))
+                    logger.info(f"Successfully added group {chat_id} ({groupname}) to the knowledge base")
+                    return True
             except Exception as e:
-                self.conn.rollback()
                 logger.error(f"Failed to store updated groups in knowledge base: {str(e)}")
                 return False
 
@@ -252,9 +250,14 @@ class Database:
                 bot_data['group_members'] = [group for group in bot_data['group_members'] if group['id'] != chat_id]
 
             # Store updated groups in the knowledge base
-            self.store_knowledge("groups", json.dumps(updated_groups))
-            logger.info(f"Group {chat_id} removed from the knowledge base.")
-            return True
+            try:
+                with self.conn:  # Uses connection as context manager
+                    self.store_knowledge("groups", json.dumps(updated_groups))
+                    logger.info(f"Group {chat_id} removed from the knowledge base.")
+                    return True
+            except Exception as e:
+                logger.error(f"Failed to store updated groups in knowledge base: {str(e)}")
+                return False
 
         except Exception as e:
             logger.error(f"Error removing group {chat_id}: {str(e)}") 
