@@ -8,6 +8,7 @@ import asyncio
 import httpx
 import os
 import uuid
+import tempfile  # Import tempfile module
 from gtts import gTTS
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
@@ -150,11 +151,11 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             
             if transfer_amount <= 0:
                 logger.warning(f"Invalid transfer amount: {transfer_amount}")
-                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: {required_amount})", None
+                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: {required_amount})"
                 
             if transfer_amount < required_amount:
                 logger.warning(f"Insufficient transfer amount: {transfer_amount}")
-                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: {required_amount})", None
+                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: {required_amount})"
                 
         except Exception as e:
             logger.error(f"Error checking token amount: {str(e)}")
@@ -238,8 +239,7 @@ async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Option
     """Convert text to audio using Google Text-to-Speech."""
     try:
         # Create a temporary directory if it doesn't exist
-        temp_dir = os.path.join(os.getcwd(), 'temp_audio')
-        os.makedirs(temp_dir, exist_ok=True)
+        temp_dir = tempfile.gettempdir()  # Use the system's temporary directory
         
         # Generate a unique filename
         filename = f"space_summary_{uuid.uuid4()}.mp3"
