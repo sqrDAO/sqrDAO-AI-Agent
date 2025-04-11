@@ -234,9 +234,19 @@ def main():
         try:
             # Load members from database
             members_data = application.bot_data['db'].get_knowledge("members")
-            if members_data and members_data[0]:  # Check if we have any data
-                application.bot_data['members'] = members_data[0]  # Use first result since it's the latest
-            else:
+            logger.info(f"Members data retrieved: {members_data}")  # Log the retrieved members data
+            
+            unique_members = set()  # Use a set to avoid duplicates
+            for member_list in members_data:
+                for member in member_list:
+                    # Add unique members based on username
+                    if member['username'] and member['user_id']:
+                        unique_members.add((member['username'], member['user_id']))
+
+            # Convert the set back to a list of dictionaries
+            application.bot_data['members'] = [{'username': username, 'user_id': user_id} for username, user_id in unique_members]
+
+            if not application.bot_data['members']:  # Check if we have any data
                 application.bot_data['members'] = []
 
             # Load groups from database
