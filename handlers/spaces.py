@@ -60,6 +60,7 @@ def reset_user_data(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def check_transaction_status(signature: str, command_start_time: datetime, 
                                     space_url: str = None, request_type: str = 'text') -> Tuple[bool, str]:
     """Check the status of a Solana transaction."""
+    logger.info(f"Checking transaction status for signature: {signature}")
     try:
         client = AsyncClient(SOLANA_RPC_URL, commitment=Commitment("confirmed"))
         
@@ -75,6 +76,8 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             signature_obj,
             encoding="jsonParsed",  # Use jsonParsed for better token balance parsing
         )
+
+        logger.info(f"Transaction details retrieved: {tx}")
 
         if not tx or not tx.value:
             return False, "Could not get transaction details"
@@ -157,7 +160,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             logger.error(f"Error checking token amount: {str(e)}")
             return False, "❌ Error verifying token amount in transaction"
             
-        return True, "Transaction confirmed", None  # Return the job_id if available
+        return True, "Transaction confirmed"
 
     except Exception as e:
         logger.error(f"Error checking transaction: {str(e)}")
@@ -457,12 +460,9 @@ async def handle_failed_transaction(
 
 async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, message: Message):
     """Process a transaction signature."""
+    logger.info(f"Starting to process signature: {signature}")
 
-    command_start_time = None
-    if context.user_data.get('command_start_time'):
-        command_start_time = context.user_data.get('command_start_time')
-    else:
-        command_start_time = datetime.now()
+    command_start_time = context.user_data.get('command_start_time', datetime.now())
     space_url = context.user_data.get('space_url')
     request_type = context.user_data.get('request_type', 'text')
     
@@ -478,6 +478,8 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
         signature, command_start_time, space_url, request_type
     )
     
+    logger.info(f"Transaction status check result: success={success}, message={status_message}")
+
     if success:
         logger.info(f"Signature processed successfully: {signature}")
         await handle_successful_transaction(
