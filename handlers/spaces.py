@@ -303,27 +303,45 @@ async def periodic_job_check(
                     else:
                         # Handle the summary text
                         summary_text = result  # Use the single result if not a list
-                        logger.info(f"Summary text: {summary_text}, length: {len(summary_text)}")
 
                         # Check if the summary exceeds 4096 characters
                         if len(summary_text) > 4000:
-                            # Split the summary into parts
-                            parts = [summary_text[i:i + 4000] for i in range(0, len(summary_text), 4000)]
-                            logger.info(f"Summary parts: {parts}")
-                            for count, part in enumerate(parts, 1):
-                                logger.info(f"Summary part {count}: {part}")
+                            # Split summary at sentence or paragraph boundaries when possible
+                            parts = []
+                            remaining = summary_text
+                            max_length = 4000
+                            while len(remaining) > max_length:
+                                # Try to find a good split point (paragraph, sentence, or word boundary)
+                                split_point = remaining[:max_length].rfind('\n\n')  # Try paragraph
+                                if split_point < max_length // 2:  # If split point is too early in text
+                                    split_point = remaining[:max_length].rfind('. ')  # Try sentence
+                                if split_point < max_length // 2:  # If still too early
+                                    split_point = remaining[:max_length].rfind(' ')  # Try word boundary
+                                if split_point < 0:  # If no good split found
+                                    split_point = max_length  # Just split at max length
+
+                                parts.append(remaining[:split_point+1])
+                                remaining = remaining[split_point+1:]
+
+                                if remaining:
+                                    parts.append(remaining)
+
+                                logger.info(f"Split summary into {len(parts)} parts")
+
+                                for count, part in enumerate(parts, 1):
+                                    logger.info(f"Split into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
+                                    await context.bot.edit_message_text(
+                                        chat_id=chat_id,
+                                        message_id=message_id,
+                                        text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",
+                                        parse_mode=ParseMode.HTML
+                                    )
                                 await context.bot.edit_message_text(
                                     chat_id=chat_id,
                                     message_id=message_id,
-                                    text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",
+                                    text="If you would like to make suggestions or edits, use the command /edit_summary.",
                                     parse_mode=ParseMode.HTML
                                 )
-                            await context.bot.edit_message_text(
-                                chat_id=chat_id,
-                                message_id=message_id,
-                                text="If you would like to make suggestions or edits, use the command /edit_summary.",
-                                parse_mode=ParseMode.HTML
-                            )
                         else:
                             await context.bot.edit_message_text(
                                 chat_id=chat_id,
