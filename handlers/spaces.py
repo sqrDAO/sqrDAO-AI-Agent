@@ -61,7 +61,6 @@ def reset_user_data(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def check_transaction_status(signature: str, command_start_time: datetime, 
                                     space_url: str = None, request_type: str = 'text') -> Tuple[bool, str]:
     """Check the status of a Solana transaction."""
-    logger.info(f"Checking transaction status for signature: {signature}")
     try:
         client = AsyncClient(SOLANA_RPC_URL, commitment=Commitment("confirmed"))
         
@@ -77,8 +76,6 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             signature_obj,
             encoding="jsonParsed",  # Use jsonParsed for better token balance parsing
         )
-
-        logger.info(f"Transaction details retrieved: {tx}")
 
         if not tx or not tx.value:
             return False, "Could not get transaction details"
@@ -100,17 +97,11 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             logger.error("No block time found in transaction")
             return False, "❌ No block time found in transaction"
 
-        # Log the raw block time
-        logger.info(f"Raw block time from transaction: {tx.value.block_time}")
-
         # Convert block time to datetime
         transaction_time = datetime.fromtimestamp(tx.value.block_time)
         
         # Check if transaction was completed within the 30-minute window
         time_diff = transaction_time - command_start_time
-        
-        # Log the command start time and transaction time for debugging
-        logger.info(f"Command start time: {command_start_time}, Transaction time: {transaction_time}, Time difference: {time_diff}")
 
         if time_diff < timedelta(0):
             logger.warning("Transaction was completed before command was issued")
@@ -188,6 +179,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         
         if not success:
             logger.error(f"Job status check failed: {error}")
+            logger.error(f"Response data: {data}")  # Log the response data for more context
             raise PermanentError("Job status check failed") from None
 
         # Access the job status from params
@@ -199,8 +191,6 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         if job_status == 'completed':
             # Proceed with summarization
             summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
-
-            logger.info(f"Summarizing space: {space_url}")
             
             summary_response = await api_request(
                 'post',
@@ -214,14 +204,15 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                     "promptType": "formatted"
                 }
             )
-
-            logger.info(f"Summary response: {summary_response}")
             
             if summary_response[0]:
                 summary_data = summary_response[1]
-                return True, summary_data.get('summary', '✅ Space summarized successfully!')
+                summary_text = summary_data.get('summary', '✅ Space summarized successfully!')
+                return True, summary_text  # Return as a single part
             else:
                 logger.error(f"Failed to summarize space: {summary_response[2]}")
+                # Log the entire response for debugging
+                logger.error(f"Summary response details: {summary_response}")
                 return False, f"❌ Failed to summarize space: {summary_response[2]}"
         elif job_status == 'failed':
             logger.error(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
@@ -310,17 +301,55 @@ async def periodic_job_check(
                                 parse_mode=ParseMode.HTML
                             )
                     else:
-                        if not summarization_initiated:  # Check if summarization has already been initiated
-                            summarization_initiated = True  # Set the flag to true
+                        # Handle the summary text
+                        summary_text = result  # Use the single result if not a list
+
+                        # Check if the summary exceeds 4096 characters
+                        if len(summary_text) > 4096:
+                            # Split summary at sentence or paragraph boundaries when possible
+                            parts = []
+                            remaining = summary_text
+                            max_length = 4096
+                            while len(remaining) > max_length:
+                                # Try to find a good split point (paragraph, sentence, or word boundary)
+                                split_point = remaining[:max_length].rfind('\n\n')  # Try paragraph
+                                if split_point < max_length // 2:  # If split point is too early in text
+                                    split_point = remaining[:max_length].rfind('. ')  # Try sentence
+                                if split_point < max_length // 2:  # If still too early
+                                    split_point = remaining[:max_length].rfind(' ')  # Try word boundary
+                                if split_point < 0:  # If no good split found
+                                    split_point = max_length  # Just split at max length
+
+                                parts.append(remaining[:split_point+1])
+                                remaining = remaining[split_point+1:]
+
+                                if remaining:
+                                    parts.append(remaining)
+
+                                logger.info(f"Split summary into {len(parts)} parts")
+
+                                for count, part in enumerate(parts, 1):
+                                    logger.info(f"Split into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
+                                    await context.bot.edit_message_text(
+                                        chat_id=chat_id,
+                                        message_id=message_id,
+                                        text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",
+                                        parse_mode=ParseMode.HTML
+                                    )
+                                await context.bot.edit_message_text(
+                                    chat_id=chat_id,
+                                    message_id=message_id,
+                                    text="If you would like to make suggestions or edits, use the command /edit_summary.",
+                                    parse_mode=ParseMode.HTML
+                                )
+                        else:
                             await context.bot.edit_message_text(
                                 chat_id=chat_id,
                                 message_id=message_id,
-                                text=f"✅ Summary completed!\n\n{result}\n\n"
+                                text=f"✅ Summary completed!\n\n{summary_text}\n\n"
                                      "If you would like to make suggestions or edits, use the command /edit_summary.",
                                 parse_mode=ParseMode.HTML
                             )
-                        else:
-                            logger.warning("Summarization already initiated, skipping further calls.")
                     
                     reset_user_data(context)
                     return
@@ -462,7 +491,6 @@ async def handle_failed_transaction(
 
 async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, message: Message):
     """Process a transaction signature."""
-    logger.info(f"Starting to process signature: {signature}")
 
     command_start_time = context.user_data.get('command_start_time', datetime.now())
     space_url = context.user_data.get('space_url')
@@ -483,7 +511,6 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
     logger.info(f"Transaction status check result: success={success}, message={status_message}")
 
     if success:
-        logger.info(f"Signature processed successfully: {signature}")
         await handle_successful_transaction(
             context, message, message.text, space_url, request_type
         )
@@ -515,7 +542,6 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         space_url = context.args[0]
-        logger.info(f"Space URL: {space_url}")
         if not is_valid_space_url(space_url):
             await update.message.reply_text(
                 "Please provide the X Space URL and the request type (text or audio) after the command.\n\n"
@@ -605,9 +631,6 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Sanitize the custom_prompt to remove potentially harmful content
     sanitized_prompt = sanitize_input(custom_prompt)
-
-    logger.info("Custom prompt: %s", sanitized_prompt)
-    logger.info("Space URL: %s", space_url)
 
     if not is_valid_space_url(space_url):
         await update.message.reply_text(

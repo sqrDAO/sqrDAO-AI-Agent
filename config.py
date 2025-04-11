@@ -4,7 +4,7 @@ from telegram.ext.filters import BaseFilter
 import logging
 
 # Initialize the logger
-logging.basicConfig(level=logging.INFO)  # Set the logging level as needed
+logging.basicConfig(level=logging.ERROR)  # Set the logging level as needed
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -112,7 +112,6 @@ safety_settings = [
 class DocumentWithMassMessageCaption(BaseFilter):
     def filter(self, message):
         # Check if it's a document AND has a caption starting with /mass_message
-        logger.info(f"Filtering message for /mass_message caption: {message.caption}")
         return bool(
             message.document and
             message.caption and
