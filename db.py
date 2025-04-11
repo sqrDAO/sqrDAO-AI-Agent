@@ -149,6 +149,7 @@ class Database:
             # Store updated groups in the knowledge base
             self.store_knowledge("groups", json.dumps([existing_groups]))  # Wrap in a list again
             logger.info(f"Group {chat_id} added to the knowledge base.")
+            logger.info(f"Grouplist after adding group: {self.get_knowledge('groups')}")
 
         except Exception as e:
             logger.error(f"Error adding group {chat_id}: {str(e)}")
