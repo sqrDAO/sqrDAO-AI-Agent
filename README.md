@@ -60,9 +60,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - `/list_requests` - View pending member requests
 - `/list_members` - List all current members
 - `/mass_message` - Send a message or image to all users and groups/channels
-- `/add_group` - Manually add a group to the bot's tracking
 - `/list_groups` - List all tracked groups
-- `/remove_group` - Remove a group from tracking
 
 ## Group Management
 

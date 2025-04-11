@@ -4,7 +4,7 @@ import logging
 import google.generativeai as genai
 import traceback
 from dotenv import load_dotenv
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 from telegram import Update, Message
 from telegram.constants import ParseMode
 import re
@@ -18,7 +18,7 @@ from handlers.general import (
 from handlers.member import (
     request_member, approve_member, reject_member,
     list_requests, list_members, resources_command,
-    list_groups, add_group, remove_group
+    list_groups
 )
 from handlers.knowledge import (
     learn_command, bulk_learn_command, learn_from_url
@@ -238,6 +238,35 @@ async def process_message_with_context(message, context):
     except Exception as e:
         return "I encountered an error while processing your message. Please try again."
 
+async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle updates to chat member status."""
+    try:
+        # Log the received update for debugging
+        logger.info(f"Received chat member update: {update}")
+
+        # Check if the update contains my_chat_member
+        if not update.my_chat_member:
+            logger.warning("Received update does not contain my_chat_member.")
+            return
+
+        chat_member = update.my_chat_member
+        chat_id = chat_member.chat.id
+        bot_user_id = context.bot.id
+
+        # Check the bot's new membership status
+        if chat_member.new_chat_member.status == "member":
+            # Bot was added to the group
+            # Update the groups table in the database
+            db.add_group(chat_id, chat_member.chat.title, context.bot_data)
+
+        elif chat_member.new_chat_member.status == "left":
+            # Bot was removed from the group
+            # Update the groups table in the database
+            db.remove_group(chat_id, context.bot_data)
+
+    except Exception as e:
+        logger.error(f"Error handling chat member update: {str(e)}")
+
 def main():
     """Main function to run the bot."""
     try:
@@ -296,8 +325,6 @@ def main():
         application.add_handler(CommandHandler("reject_member", reject_member))
         application.add_handler(CommandHandler("list_requests", list_requests))
         application.add_handler(CommandHandler("list_groups", list_groups))
-        application.add_handler(CommandHandler("add_group", add_group))
-        application.add_handler(CommandHandler("remove_group", remove_group))
         application.add_handler(CommandHandler("mass_message", mass_message))
         application.add_handler(CommandHandler("cancel", cancel_command))
         application.add_handler(CommandHandler("edit_summary", edit_summary))
@@ -319,6 +346,9 @@ def main():
         application.add_handler(MessageHandler(
             filters.VIDEO & filters.CaptionRegex(r'^/mass_message') & filters.COMMAND, mass_message
         ))
+
+        # Add chat member update handler
+        application.add_handler(ChatMemberHandler(handle_chat_member_update))
 
         # Set bot commands
         commands = [
