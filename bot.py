@@ -71,7 +71,6 @@ try:
     
 except Exception as e:
     logger.error(f"Error initializing or testing Gemini model: {str(e)}")
-    logger.error(f"Traceback: {traceback.format_exc()}")
     raise
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,7 +96,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_group_message(message, context)
 
     except Exception as e:
-        logger.error(f"Error handling message: {str(e)}")
         await message.reply_text(
             get_error_message('general_error'),
             parse_mode=ParseMode.HTML
@@ -115,7 +113,6 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
             )
 
     except Exception as e:
-        logger.error(f"Error handling private message: {str(e)}")
         await message.reply_text(
             get_error_message('general_error'),
             parse_mode=ParseMode.HTML
@@ -137,7 +134,6 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
             )
 
     except Exception as e:
-        logger.error(f"Error handling group message: {str(e)}")
         await message.reply_text(
             get_error_message('general_error'),
             parse_mode=ParseMode.HTML
@@ -166,7 +162,6 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         return response
 
     except Exception as e:
-        logger.error(f"Error processing message: {str(e)}")
         return get_error_message('processing_error')
 
 async def process_message_with_context(message, context):
@@ -223,7 +218,6 @@ async def process_message_with_context(message, context):
         return response.text
         
     except Exception as e:
-        logger.error(f"Error generating response: {str(e)}")
         return "I encountered an error while processing your message. Please try again."
 
 def main():
@@ -252,7 +246,6 @@ def main():
             else:
                 application.bot_data['group_members'] = []
         except Exception as e:
-            logger.error(f"Error loading initial data: {str(e)}")
             application.bot_data['members'] = []  # Fallback to empty list
             application.bot_data['group_members'] = []  # Fallback to empty list
 

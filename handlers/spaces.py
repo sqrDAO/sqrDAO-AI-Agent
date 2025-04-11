@@ -265,6 +265,7 @@ async def periodic_job_check(
     """Periodically check the status of a summarization job with improved error handling."""
     start_time = datetime.now()
     attempts = 0
+    summarization_initiated = False  # Flag to track if summarization has been initiated
     
     while attempts < max_attempts:
         try:
@@ -295,13 +296,18 @@ async def periodic_job_check(
                             parse_mode=ParseMode.HTML
                         )
                 else:
-                    await context.bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        text=f"✅ Summary completed!\n\n{result}\n\n"
-                             "If you would like to make suggestions or edits, use the command /edit_summary.",
-                        parse_mode=ParseMode.HTML
-                    )
+                    if not summarization_initiated:  # Check if summarization has already been initiated
+                        summarization_initiated = True  # Set the flag to true
+                        await context.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            text=f"✅ Summary completed!\n\n{result}\n\n"
+                                 "If you would like to make suggestions or edits, use the command /edit_summary.",
+                            parse_mode=ParseMode.HTML
+                        )
+                    else:
+                        logger.warning("Summarization already initiated, skipping further calls.")
+                
                 reset_user_data(context)
                 return
             

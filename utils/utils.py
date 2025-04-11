@@ -35,7 +35,7 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         text = re.sub(r'`(.*?)`', r'<code>\1</code>', text)
         
         # Define allowed tags for bleach
-        allowed_tags = ['b', 'i', 'u', 'pre', 'code']
+        allowed_tags = ['b', 'i', 'u', 'pre', 'code', 'a']
         
         # Sanitize the HTML to remove unsupported tags and fix any issues
         text = bleach.clean(text, tags=allowed_tags, strip=True)
@@ -49,8 +49,16 @@ def extract_urls(text: str) -> List[str]:
     return re.findall(url_pattern, text)
 
 @with_retry(max_attempts=3)
-async def get_webpage_content(url: str) -> Optional[str]:
-    """Fetch main content from a webpage using httpx."""
+async def get_webpage_content(url: str, max_length: int = 10000) -> Optional[str]:
+    """Fetch main content from a webpage using httpx.
+    
+    Args:
+        url: The URL of the webpage to fetch.
+        max_length: The maximum length of the content to return.
+        
+    Returns:
+        The main content of the webpage, limited to max_length characters.
+    """
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url)
@@ -59,12 +67,12 @@ async def get_webpage_content(url: str) -> Optional[str]:
             # Try trafilatura first
             content = extract(response.text)
             if content:
-                return content[:5000]  # Limit to 5000 chars
+                return content[:max_length]  # Limit to max_length chars
             
             # Fallback to BeautifulSoup
             soup = BeautifulSoup(response.text, 'html.parser')
             text = soup.get_text(separator=' ', strip=True)
-            return text[:5000] if text else None
+            return text[:max_length] if text else None
             
     except httpx.HTTPError as e:
         logger.error(f"HTTP error fetching {url}: {str(e)}")
@@ -95,14 +103,9 @@ async def resolve_sns_domain(domain: str) -> Optional[str]:
             return result
     except httpx.HTTPError as e:
         logger.error(f"HTTP error resolving SNS domain {domain}: {str(e)}")
-        logger.error(f"Response status code: {e.response.status_code if hasattr(e, 'response') else 'N/A'}")
-        logger.error(f"Response headers: {e.response.headers if hasattr(e, 'response') else 'N/A'}")
-        logger.error(f"Response body: {e.response.text if hasattr(e, 'response') else 'N/A'}")
         raise TransientError(f"HTTP error: {str(e)}") from e
     except Exception as e:
         logger.error(f"Error resolving SNS domain {domain}: {str(e)}")
-        logger.error(f"Error type: {type(e)}")
-        logger.error(f"Full error traceback: {traceback.format_exc()}")
         raise TransientError(f"Error resolving domain: {str(e)}") from e
 
 @with_retry(max_attempts=3)
@@ -215,7 +218,12 @@ async def api_request(method: str, url: str, headers: dict = None, json: dict = 
                 raise ValueError("Unsupported HTTP method")
             
             response.raise_for_status()  # Raise an error for bad responses
-            return True, response.json(), None
+            try:
+                data = response.json()
+            except ValueError as ve:
+                logger.error(f"Failed to parse JSON: {str(ve)}")
+                return False, None, "Invalid JSON response from server"
+            return True, data, None
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error during {method} request: {str(e)}")
         return False, None, str(e)

@@ -143,8 +143,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_failure_count += 1
                 failed_users.append(f"@{user['username']}")
                 logger.error(f"Failed to send to user @{user['username']}: {str(e)}")
-                logger.error(f"Error type: {type(e)}")
-                logger.error(f"Full error traceback: {traceback.format_exc()}")
 
     for group in filtered_groups:
         try:
@@ -191,8 +189,6 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             group_failure_count += 1
             failed_groups.append(f"{group['title']} ({group['type']})")
             logger.error(f"Failed to send to group/channel {group['title']} (ID: {group['id']}): {str(e)}")
-            logger.error(f"Error type: {type(e)}")
-            logger.error(f"Full error traceback: {traceback.format_exc()}")
     
     # Send summary to the sender
     summary = f"✅ {'Image' if media and update.message.photo else 'Video' if media and update.message.video else 'Document' if media and update.message.document else 'Message'} delivery complete!\n\n"

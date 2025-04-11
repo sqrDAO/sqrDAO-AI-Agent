@@ -66,7 +66,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.HTML
                 )
             else:
-                logger.error(f"HTTP error resolving SNS domain {input_address}: {str(e)}")
                 await update.message.reply_text(
                     f"❌ Error resolving SNS domain: {input_address}\n"
                     f"Please try again later or use a wallet address instead.",
@@ -74,8 +73,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             return
         except Exception as e:
-            logger.error(f"Error resolving SNS domain: {str(e)}")
-            logger.error(f"Full error traceback: {traceback.format_exc()}")
             await update.message.reply_text(
                 f"❌ Error resolving SNS domain: {input_address}\n"
                 f"Please try again later or use a wallet address instead.",
@@ -112,19 +109,12 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 payer=dummy_payer
             )
         except ValueError as ve:
-            logger.error(f"ValueError during address validation: {str(ve)}")
-            logger.error(f"Input wallet address: {wallet_address}")
-            logger.error(f"Input token program ID: {TOKEN_PROGRAM_ID}")
             await update.message.reply_text(
                 "❌ Invalid wallet address format.",
                 parse_mode=ParseMode.HTML
             )
             return
         except Exception as e:
-            logger.error(f"Unexpected error during address validation: {str(e)}")
-            logger.error(f"Error type: {type(e)}")
-            logger.error(f"Input wallet address: {wallet_address}")
-            logger.error(f"Input token program ID: {TOKEN_PROGRAM_ID}")
             await update.message.reply_text(
                 "❌ Error validating wallet address.",
                 parse_mode=ParseMode.HTML
@@ -173,8 +163,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 token_name = 'Unknown Token'
                 token_symbol = '???'
         except Exception as e:
-            logger.error(f"Error fetching token metadata: {str(e)}")
-            logger.error(f"Full error traceback: {traceback.format_exc()}")
             token_name = 'Unknown Token'
             token_symbol = '???'
 
@@ -188,8 +176,6 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
-        logger.error(f"Error checking balance: {str(e)}")
-        logger.error(f"Full error traceback: {traceback.format_exc()}")
         await update.message.reply_text(
             "❌ Error checking balance. Please verify the addresses and try again.",
             parse_mode=ParseMode.HTML
@@ -230,7 +216,6 @@ async def sqr_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(info_text, parse_mode=ParseMode.HTML)
         
     except Exception as e:
-        logger.error(f"Error getting SQR info: {str(e)}")
         await update.message.reply_text(
             "❌ Error fetching SQR token information. Please try again later.",
             parse_mode=ParseMode.HTML
