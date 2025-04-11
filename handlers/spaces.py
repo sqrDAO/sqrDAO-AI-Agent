@@ -13,6 +13,7 @@ from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
 from solders.signature import Signature
 from utils.retry import with_retry, TransientError, PermanentError
+from utils.utils import is_valid_space_url
 from config import (
     TEXT_SUMMARY_COST,
     AUDIO_SUMMARY_COST,
@@ -514,7 +515,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         space_url = context.args[0]
         logger.info(f"Space URL: {space_url}")
-        if not ('x.com/i/spaces/' in space_url or 'x.com/i/broadcasts/' in space_url):
+        if not is_valid_space_url(space_url):
             raise InvalidSpaceUrlError("Invalid X Space URL")
         
         # Determine request type (text or audio)
@@ -594,7 +595,7 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Space URL: %s", space_url)
 
     # Validate the space URL format
-    if not ('x.com/i/spaces/' in space_url or 'x.com/i/broadcasts/' in space_url):
+    if not is_valid_space_url(space_url):
         await update.message.reply_text(
             "❌ Invalid space URL format. Please provide a valid URL.",
             parse_mode=ParseMode.HTML

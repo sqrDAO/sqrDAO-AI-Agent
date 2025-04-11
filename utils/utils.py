@@ -11,6 +11,10 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
+def is_valid_space_url(url: str) -> bool:
+    """Check if the provided URL is a valid X Space URL."""
+    return 'x.com/i/spaces/' in url or 'x.com/i/broadcasts/' in url
+
 def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
     """Format text to be compatible with Telegram's HTML formatting."""
     if parse_mode == 'HTML':
