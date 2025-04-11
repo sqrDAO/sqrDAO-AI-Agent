@@ -19,3 +19,4 @@ base58>=2.1.1
 gTTS>=2.3,<2.4
 tenacity>=8.2.3
 httpx>=0.26.0
+bleach>=6.0.0

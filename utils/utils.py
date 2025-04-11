@@ -8,6 +8,7 @@ from utils.retry import with_retry, TransientError
 from config import ERROR_MESSAGES, SUCCESS_MESSAGES, SQR_TOKEN_MINT
 import json
 import traceback
+import bleach  # Add this import
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +34,12 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         # Handle inline code
         text = re.sub(r'`(.*?)`', r'<code>\1</code>', text)
         
-        # Remove any unsupported HTML tags
+        # Define allowed tags for bleach
         allowed_tags = ['b', 'i', 'u', 'pre', 'code']
-        text = re.sub(
-            rf'</?(?!({"|".join(allowed_tags)}))[^>]*>',
-            '',
-            text
-        )
         
+        # Sanitize the HTML to remove unsupported tags and fix any issues
+        text = bleach.clean(text, tags=allowed_tags, strip=True)
+
         return text
     return text  # Return unmodified text if parse mode is not recognized
 

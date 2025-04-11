@@ -77,8 +77,6 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
 
         if not tx or not tx.value:
             return False, "Could not get transaction details", None
-        else:
-            logger.info(f"Transaction details: {tx}")
         
         transaction_data = tx.value.transaction
         meta = transaction_data.meta
@@ -387,6 +385,20 @@ async def periodic_job_check(
     )
     reset_user_data(context)
 
+async def api_post(url: str, headers: dict, json: dict) -> Tuple[bool, Optional[dict], Optional[str]]:
+    """Reusable function to perform a POST request with error handling."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, json=json)
+            response.raise_for_status()  # Raise an error for bad responses
+            return True, response.json(), None
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error during POST request: {str(e)}")
+        return False, None, str(e)
+    except Exception as e:
+        logger.error(f"Unexpected error during POST request: {str(e)}")
+        return False, None, str(e)
+
 async def handle_successful_transaction(
     context: ContextTypes.DEFAULT_TYPE,
     message: Message,
@@ -402,33 +414,29 @@ async def handle_successful_transaction(
             parse_mode=ParseMode.HTML
         )
 
-        # Move the download logic here
         api_key = os.getenv('SQR_FUND_API_KEY')
         if not api_key:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
             raise PermanentError("API key not configured") from None
 
-        async with httpx.AsyncClient() as client:
-            download_response = await client.post(
-                "https://spaces.sqrfund.ai/api/async/download-spaces",
-                headers={
-                    "Content-Type": "application/json",
-                    "X-API-Key": api_key
-                },
-                json={
-                    "spacesUrl": space_url
-                }
-            )
+        download_response = await api_post(
+            "https://spaces.sqrfund.ai/api/async/download-spaces",
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key
+            },
+            json={
+                "spacesUrl": space_url
+            }
+        )
 
-            if download_response.status_code != 202:
-                logger.error(f"Failed to initiate space download: {download_response.text}")
-                raise PermanentError(f"Failed to initiate space download: {download_response.text}") from None
+        if not download_response[0]:  # If the request failed
+            raise PermanentError(f"Failed to initiate space download: {download_response[2]}") from None
 
-            # Get the job ID from the response
-            job_data = download_response.json()
-            job_id = job_data.get('jobId')
-            if not job_id:
-                raise PermanentError("No job ID received from download request") from None
+        job_data = download_response[1]
+        job_id = job_data.get('jobId')
+        if not job_id:
+            raise PermanentError("No job ID received from download request") from None
 
         # Start the periodic job check
         asyncio.create_task(
@@ -577,11 +585,8 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Join the arguments to form the custom prompt
     full_prompt = " ".join(context.args)
-
-    # Extract the space URL and the custom prompt
-    parts = full_prompt.split(" ", 1)  # Split into two parts: URL and the rest
+    parts = full_prompt.split(" ", 1)
     if len(parts) < 2:
         await update.message.reply_text(
             "❌ Please provide both the space URL and the edit prompt.",
@@ -589,12 +594,11 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    space_url = parts[0]  # The first part is the space URL
-    custom_prompt = parts[1]  # The rest is the custom prompt
+    space_url = parts[0]
+    custom_prompt = parts[1]
     logger.info("Custom prompt: %s", custom_prompt)
     logger.info("Space URL: %s", space_url)
 
-    # Validate the space URL format
     if not is_valid_space_url(space_url):
         await update.message.reply_text(
             "❌ Invalid space URL format. Please provide a valid URL.",
@@ -602,7 +606,6 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Make the API call to summarize with the custom prompt
     api_key = os.getenv('SQR_FUND_API_KEY')
     if not api_key:
         await update.message.reply_text(
@@ -611,52 +614,36 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    api_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
-    headers = {
-        "Content-Type": "application/json",
-        "X-API-Key": api_key
-    }
-    payload = {
-        "spacesUrl": space_url,
-        "customPrompt": custom_prompt
-    }
-
-    # Send a processing message
     processing_msg = await update.message.reply_text(
         "🔄 Processing your edit request (this may take up to 60 seconds)...",
         parse_mode=ParseMode.HTML
     )
 
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:  # Increase timeout to 60 seconds
-            response = await client.post(api_url, headers=headers, json=payload)
-            if response.status_code == 200:
-                summary_data = response.json()
-                await context.bot.edit_message_text(
-                    chat_id=update.effective_chat.id,
-                    message_id=processing_msg.message_id,
-                    text=f"✅ Edited Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
-                    parse_mode=ParseMode.HTML
-                )
-            else:
-                await context.bot.edit_message_text(
-                    chat_id=update.effective_chat.id,
-                    message_id=processing_msg.message_id,
-                    text=f"❌ Failed to edit summary: {response.text}",
-                    parse_mode=ParseMode.HTML
-                )
-    except httpx.ReadTimeout:
+    edit_response = await api_post(
+        "https://spaces.sqrfund.ai/api/summarize-spaces",
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": api_key
+        },
+        json={
+            "spacesUrl": space_url,
+            "customPrompt": custom_prompt
+        }
+    )
+
+    if not edit_response[0]:  # If the request failed
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
             message_id=processing_msg.message_id,
-            text="❌ The request to edit the summary timed out. Please try again later.",
+            text=f"❌ Failed to edit summary: {edit_response[2]}",
             parse_mode=ParseMode.HTML
         )
-    except Exception as e:
-        logger.error(f"Unexpected error during API call: {str(e)}")
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=processing_msg.message_id,
-            text="❌ An unexpected error occurred while trying to edit the summary. Please try again later.",
-            parse_mode=ParseMode.HTML
-        ) 
+        return
+
+    summary_data = edit_response[1]
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=processing_msg.message_id,
+        text=f"✅ Edited Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
+        parse_mode=ParseMode.HTML
+    ) 
