@@ -506,7 +506,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not context.args:
             await update.message.reply_text(
-                "Please provide the X Space URL and the request type after the command.\n\n"
+                "Please provide the X Space URL and the request type (text or audio) after the command.\n\n"
                 "Example: `/summarize_space https://x.com/i/spaces/YOUR_SPACE_ID text`",
                 parse_mode=ParseMode.MARKDOWN
             )
@@ -515,7 +515,12 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         space_url = context.args[0]
         logger.info(f"Space URL: {space_url}")
         if not is_valid_space_url(space_url):
-            raise InvalidSpaceUrlError("Invalid X Space URL")
+            await update.message.reply_text(
+                "Please provide the X Space URL and the request type (text or audio) after the command.\n\n"
+                "Example: `/summarize_space https://x.com/i/spaces/YOUR_SPACE_ID text`",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
         
         # Determine request type (text or audio)
         if len(context.args) > 1:
