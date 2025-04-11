@@ -61,7 +61,6 @@ def reset_user_data(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def check_transaction_status(signature: str, command_start_time: datetime, 
                                     space_url: str = None, request_type: str = 'text') -> Tuple[bool, str]:
     """Check the status of a Solana transaction."""
-    logger.info(f"Checking transaction status for signature: {signature}")
     try:
         client = AsyncClient(SOLANA_RPC_URL, commitment=Commitment("confirmed"))
         
@@ -77,8 +76,6 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             signature_obj,
             encoding="jsonParsed",  # Use jsonParsed for better token balance parsing
         )
-
-        logger.info(f"Transaction details retrieved: {tx}")
 
         if not tx or not tx.value:
             return False, "Could not get transaction details"
@@ -100,17 +97,11 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             logger.error("No block time found in transaction")
             return False, "❌ No block time found in transaction"
 
-        # Log the raw block time
-        logger.info(f"Raw block time from transaction: {tx.value.block_time}")
-
         # Convert block time to datetime
         transaction_time = datetime.fromtimestamp(tx.value.block_time)
         
         # Check if transaction was completed within the 30-minute window
         time_diff = transaction_time - command_start_time
-        
-        # Log the command start time and transaction time for debugging
-        logger.info(f"Command start time: {command_start_time}, Transaction time: {transaction_time}, Time difference: {time_diff}")
 
         if time_diff < timedelta(0):
             logger.warning("Transaction was completed before command was issued")
@@ -188,6 +179,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         
         if not success:
             logger.error(f"Job status check failed: {error}")
+            logger.error(f"Response data: {data}")  # Log the response data for more context
             raise PermanentError("Job status check failed") from None
 
         # Access the job status from params
@@ -199,8 +191,6 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
         if job_status == 'completed':
             # Proceed with summarization
             summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
-
-            logger.info(f"Summarizing space: {space_url}")
             
             summary_response = await api_request(
                 'post',
@@ -221,6 +211,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                 return True, summary_text  # Return as a single part
             else:
                 logger.error(f"Failed to summarize space: {summary_response[2]}")
+                # Log the entire response for debugging
+                logger.error(f"Summary response details: {summary_response}")
                 return False, f"❌ Failed to summarize space: {summary_response[2]}"
         elif job_status == 'failed':
             logger.error(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
@@ -481,7 +473,6 @@ async def handle_failed_transaction(
 
 async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, message: Message):
     """Process a transaction signature."""
-    logger.info(f"Starting to process signature: {signature}")
 
     command_start_time = context.user_data.get('command_start_time', datetime.now())
     space_url = context.user_data.get('space_url')
@@ -502,7 +493,6 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
     logger.info(f"Transaction status check result: success={success}, message={status_message}")
 
     if success:
-        logger.info(f"Signature processed successfully: {signature}")
         await handle_successful_transaction(
             context, message, message.text, space_url, request_type
         )
@@ -534,7 +524,6 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         space_url = context.args[0]
-        logger.info(f"Space URL: {space_url}")
         if not is_valid_space_url(space_url):
             await update.message.reply_text(
                 "Please provide the X Space URL and the request type (text or audio) after the command.\n\n"
@@ -624,9 +613,6 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Sanitize the custom_prompt to remove potentially harmful content
     sanitized_prompt = sanitize_input(custom_prompt)
-
-    logger.info("Custom prompt: %s", sanitized_prompt)
-    logger.info("Space URL: %s", space_url)
 
     if not is_valid_space_url(space_url):
         await update.message.reply_text(

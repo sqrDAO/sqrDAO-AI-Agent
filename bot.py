@@ -131,8 +131,6 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
 async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_TYPE):
     """Handle group messages."""
     try:
-        logger.info(f"Handling group message: {message.text} from {message.from_user.username}")
-
         # Check if message is from a group where bot is a member
         if message.chat.id not in [group['id'] for group in context.bot_data['group_members']]:
             logger.warning(f"Message from non-member group: {message.chat.id}. Ignoring.")
