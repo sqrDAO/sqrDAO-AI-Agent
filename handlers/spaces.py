@@ -305,11 +305,11 @@ async def periodic_job_check(
                         summary_text = result  # Use the single result if not a list
 
                         # Check if the summary exceeds 4096 characters
-                        if len(summary_text) > 4000:
+                        if len(summary_text) > 4096:
                             # Split summary at sentence or paragraph boundaries when possible
                             parts = []
                             remaining = summary_text
-                            max_length = 4000
+                            max_length = 4096
                             while len(remaining) > max_length:
                                 # Try to find a good split point (paragraph, sentence, or word boundary)
                                 split_point = remaining[:max_length].rfind('\n\n')  # Try paragraph
