@@ -1,3 +1,4 @@
+import telegram
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -51,7 +52,10 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "• Example: /mass_message Hello everyone | sqrdao\n"
                 "If grouptype is 'sqrdao', the message will only be sent to groups/channels with 'sqrdao' in their title."
             )
-            await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
+            try:
+                await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
+            except telegram.error.BadRequest as e:
+                logger.error(f"Failed to send message: {str(e)}. The chat may be closed or invalid.")
             return
         
         # Parse the message and grouptype from arguments
