@@ -112,7 +112,7 @@ safety_settings = [
 class DocumentWithMassMessageCaption(BaseFilter):
     def filter(self, message):
         # Check if it's a document AND has a caption starting with /mass_message
-        logger.debug(f"Filtering message for /mass_message caption: {message.caption}")
+        logger.info(f"Filtering message for /mass_message caption: {message.caption}")
         return bool(
             message.document and
             message.caption and

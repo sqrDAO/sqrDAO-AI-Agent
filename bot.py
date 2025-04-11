@@ -8,6 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram import Update, Message
 from telegram.constants import ParseMode
 import re
+import telegram
 
 # Import handlers from other modules
 from handlers.general import (
@@ -78,15 +79,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         message = update.message
         if not message:
+            logger.warning("Received an empty message.")
             return
+
+        logger.info(f"Received message: {message.text} from {message.from_user.username}")
 
         # Check if we're waiting for a transaction signature
         if context.user_data.get('awaiting_signature'):
+            logger.info("Awaiting signature, processing signature.")
             await process_signature(message.text, context, message)
             return
 
         # If we're in the middle of a space summarization process, ignore other messages
         if context.user_data.get('space_url') and not context.user_data.get('awaiting_signature'):
+            logger.info("Ignoring message during space summarization process.")
             return
 
         # Process the message based on chat type
@@ -96,6 +102,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_group_message(message, context)
 
     except Exception as e:
+        logger.error(f"Error in handle_message: {str(e)}")
         await message.reply_text(
             get_error_message('general_error'),
             parse_mode=ParseMode.HTML
@@ -121,8 +128,16 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
 async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_TYPE):
     """Handle group messages."""
     try:
+        logger.info(f"Handling group message: {message.text} from {message.from_user.username}")
+
         # Check if message is from a group where bot is a member
         if message.chat.id not in [group['id'] for group in context.bot_data['group_members']]:
+            logger.warning(f"Message from non-member group: {message.chat.id}. Ignoring.")
+            return
+
+        # Check if the bot is mentioned in the message
+        if context.bot.username not in [mention.username for mention in message.entities if mention.type == 'mention']:
+            logger.info("Bot not mentioned in the message. Ignoring.")
             return
 
         # Process message with context
@@ -134,10 +149,13 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
             )
 
     except Exception as e:
+        logger.error(f"Error in handle_group_message: {str(e)}")
         await message.reply_text(
             get_error_message('general_error'),
             parse_mode=ParseMode.HTML
         )
+    except telegram.error.Forbidden as e:
+        logger.error(f"Forbidden error: {str(e)} - The bot may have been removed from the group.")
 
 async def process_message_with_context_and_reply(message: Message, context: ContextTypes.DEFAULT_TYPE):
     """Process message with context and prepare response."""
@@ -287,19 +305,19 @@ def main():
         # Add message handler
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+        # Add handler for documents with mass_message command in caption using custom filter
+        application.add_handler(MessageHandler(
+            DocumentWithMassMessageCaption() & filters.COMMAND, mass_message
+        ))
+
         # Add handler for photos with mass_message command in caption
         application.add_handler(MessageHandler(
-            filters.PHOTO & filters.CaptionRegex(r'^/mass_message'), mass_message
+            filters.PHOTO & filters.CaptionRegex(r'^/mass_message') & filters.COMMAND, mass_message
         ))
 
         # Add handler for videos with mass_message command in caption
         application.add_handler(MessageHandler(
-            filters.VIDEO & filters.CaptionRegex(r'^/mass_message'), mass_message
-        ))
-
-        # Add handler for documents with mass_message command in caption using custom filter
-        application.add_handler(MessageHandler(
-            DocumentWithMassMessageCaption(), mass_message
+            filters.VIDEO & filters.CaptionRegex(r'^/mass_message') & filters.COMMAND, mass_message
         ))
 
         # Set bot commands
