@@ -234,7 +234,6 @@ def main():
         try:
             # Load members from database
             members_data = application.bot_data['db'].get_knowledge("members")
-            logger.info(f"Members data retrieved: {members_data}")  # Log the retrieved members data
             
             unique_members = set()  # Use a set to avoid duplicates
             for member_list in members_data:
