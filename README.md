@@ -11,13 +11,15 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 ## Features
 
 ### Core Features
-- 🤖 AI-powered responses using Google's Gemini model
+- 🤖 AI-powered responses using Google's Gemini 2.0 Flash model
 - 📚 Knowledge base management
 - 👥 Member management system
 - 💬 Group chat support
 - 🔍 Web search capabilities
 - 💰 SQR token functions (information & balance checking)
 - 📢 Mass messaging system
+- 🎙️ Twitter Space summarization
+- ✏️ Summary editing capabilities
 
 ### Member Management
 - Member request system
@@ -44,6 +46,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - `/sqr_info` - Get information about the $SQR token
 - `/request_member` - Request to become a member
 - `/summarize_space` - Summarize an X (Twitter) Space (requires $SQR tokens)
+- `/edit_summary` - Edit a previously generated Space summary
 
 ### Member Commands
 - `/resources` - Access internal resources for sqrDAO Members and sqrFUND Chads
@@ -102,6 +105,7 @@ The `/summarize_space` command allows users to:
 - Receive formatted summaries of Space content
 - Handle multiple attempts with proper error messages
 - Support for both private and group chats
+- Edit generated summaries using `/edit_summary`
 
 #### Integration with sqrDAO Spaces Summarization API
 
@@ -113,6 +117,7 @@ The bot integrates with the [sqrDAO Spaces Summarization API](https://github.com
 - Provides job tracking and status updates
 - Handles authentication and API key management
 - Supports custom prompt types for different summarization styles
+- Allows editing of generated summaries
 
 #### Usage
 
@@ -121,15 +126,18 @@ To summarize a Twitter Space:
 2. The bot will verify your SQR token balance and process the payment
 3. The Space will be downloaded and processed by the sqrDAO Spaces Summarization API
 4. You'll receive a formatted summary of the Space content
+5. Use `/edit_summary` to modify the generated summary if needed
 
 Example:
 ```bash
 /summarize_space https://twitter.com/i/spaces/YOUR_SPACE_ID
+/edit_summary [summary_id] [your_edited_summary]
 ```
 
 #### Token Requirements
 
-- Each Space summarization requires a small fee in SQR tokens
+- Text summary cost: 1000 SQR tokens
+- Audio summary cost: 2000 SQR tokens
 - The fee is automatically deducted from your wallet
 - You must have sufficient SQR tokens in your wallet to use this feature
 - Token transfers are verified on-chain before processing begins
@@ -217,6 +225,7 @@ GOOGLE_CSE_ID=your_google_cse_id
 SOLANA_RPC_URL=your_solana_rpc_url
 SPACES_API_URL=https://spaces.sqrfund.ai/api
 SPACES_API_KEY=your_spaces_api_key
+SQR_FUND_API_KEY=your_sqr_fund_api_key
 ```
 
 4. Run the bot:
@@ -382,6 +391,7 @@ Core dependencies:
 - `solana` - Solana blockchain library
 - `solders` - Solana data structures
 - `base58` - Base58 encoding/decoding
+- `yt-dlp` - YouTube-DL fork for media downloading
 
 For a complete list with versions, see `requirements.txt`.
 
