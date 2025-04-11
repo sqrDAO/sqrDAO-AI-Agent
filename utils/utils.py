@@ -1,6 +1,6 @@
 import httpx
 import logging
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import re
 from bs4 import BeautifulSoup
 from trafilatura import extract
@@ -138,7 +138,8 @@ def get_announcement_prefix(grouptype: Optional[str]) -> str:
     prefixes = {
         'sqrdao': '🔔 <b>sqrDAO Announcement:</b>',
         'sqrfund': '🔔 <b>sqrFUND Announcement:</b>',
-        'both': '🔔 <b>sqrDAO & sqrFUND Announcement:</b>'
+        'both': '🔔 <b>sqrDAO & sqrFUND Announcement:</b>',
+        'summit': '🔔 <b>Web3 Builders\' Summit Announcement:</b>'
     }
     return prefixes.get(grouptype.lower(), '🔔 <b>Announcement:</b>')
 
@@ -195,3 +196,29 @@ def load_authorized_members(db):
     except Exception as e:
         logger.error(f"Error loading authorized members: {str(e)}")
         return []
+
+def sanitize_input(input_text: str) -> str:
+    """Sanitize input to remove potentially harmful content."""
+    # Implement sanitization logic here (e.g., remove HTML tags, escape special characters)
+    # For simplicity, let's just strip leading/trailing whitespace
+    return input_text.strip() 
+
+async def api_request(method: str, url: str, headers: dict = None, json: dict = None) -> Tuple[bool, Optional[dict], Optional[str]]:
+    """Reusable function to perform an HTTP request with error handling."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if method.lower() == 'post':
+                response = await client.post(url, headers=headers, json=json)
+            elif method.lower() == 'get':
+                response = await client.get(url, headers=headers)
+            else:
+                raise ValueError("Unsupported HTTP method")
+            
+            response.raise_for_status()  # Raise an error for bad responses
+            return True, response.json(), None
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error during {method} request: {str(e)}")
+        return False, None, str(e)
+    except Exception as e:
+        logger.error(f"Unexpected error during {method} request: {str(e)}")
+        return False, None, str(e)

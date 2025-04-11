@@ -13,7 +13,7 @@ from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
 from solders.signature import Signature
 from utils.retry import with_retry, TransientError, PermanentError
-from utils.utils import is_valid_space_url
+from utils.utils import is_valid_space_url, sanitize_input, api_request
 from config import (
     TEXT_SUMMARY_COST,
     AUDIO_SUMMARY_COST,
@@ -174,72 +174,55 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             raise PermanentError("API key not configured") from None
         logger.debug("API key is present.")
 
-        async with httpx.AsyncClient(timeout=30.0) as client:  # Add a timeout
-            logger.info(f"Checking job status for job ID: {job_id}")
-            response = await client.get(
-                f"https://spaces.sqrfund.ai/api/jobs/{job_id}",
-                headers={"X-API-Key": api_key}
+        logger.info(f"Checking job status for job ID: {job_id}")
+        success, data, error = await api_request(
+            'get',
+            f"https://spaces.sqrfund.ai/api/jobs/{job_id}",
+            headers={"X-API-Key": api_key}
+        )
+        
+        if not success:
+            logger.error(f"Job status check failed: {error}")
+            raise PermanentError("Job status check failed") from None
+
+        # Access the job status from params
+        job_status = data.get('job', {}).get('status')
+        if job_status is None:
+            logger.error("Response does not contain 'job' or 'status' key")
+            raise PermanentError("Invalid response format: 'job' or 'status' key missing")
+
+        if job_status == 'completed':
+            # Proceed with summarization
+            summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
+
+            logger.info(f"Summarizing space: {space_url}")
+            
+            summary_response = await api_request(
+                'post',
+                summary_url,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": api_key
+                },
+                json={
+                    "spacesUrl": space_url,
+                    "promptType": "formatted"
+                }
             )
             
-            # Log the full response for debugging
-            logger.info(f"Full response: {response.status_code}, {response.text}")
-            
-            response.raise_for_status()
-            data = response.json()
-
-            # Check if the response indicates success
-            if not data.get('success', False):
-                logger.error("Job status check failed: success key is False")
-                raise PermanentError("Job status check failed: success key is False")
-
-            # Access the job status from params
-            job_status = data.get('job', {}).get('status')
-            if job_status is None:
-                logger.error("Response does not contain 'job' or 'status' key")
-                raise PermanentError("Invalid response format: 'job' or 'status' key missing")
-
-            if job_status == 'completed':
-                # Proceed with summarization
-                summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
-
-                logger.info(f"Summarizing space: {space_url}")
-                
-                summary_response = await client.post(
-                    summary_url,
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-API-Key": api_key
-                    },
-                    json={
-                        "spacesUrl": space_url,
-                        "promptType": "formatted"
-                    }
-                )
-                
-                if summary_response.status_code == 502:
-                    logger.error("Received 502 Server Error during summarization")
-                    return False, (
-                        "⚠️ <b>Summarization Service Temporarily Unavailable</b>\n\n"
-                        "We're experiencing high demand or temporary service issues.\n"
-                        "Please wait a few minutes and try again.\n\n"
-                        "If the issue persists, you can:\n"
-                        "• Try again later\n"
-                        "• Contact support at dev@sqrfund.ai"
-                    )
-
-                if summary_response.status_code == 200:
-                    summary_data = summary_response.json()
-                    return True, summary_data.get('summary', '✅ Space summarized successfully!')
-                else:
-                    logger.error(f"Failed to summarize space. Status code: {summary_response.status_code}, Response: {summary_response.text}")
-                    return False, f"❌ Failed to summarize space: {summary_response.text}"
-            elif job_status == 'failed':
-                logger.error(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
-                raise PermanentError(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
+            if summary_response[0]:
+                summary_data = summary_response[1]
+                return True, summary_data.get('summary', '✅ Space summarized successfully!')
             else:
-                logger.warning(f"Job status is still processing: {job_status}")
-                raise TransientError("Job still processing")
-            
+                logger.error(f"Failed to summarize space: {summary_response[2]}")
+                return False, f"❌ Failed to summarize space: {summary_response[2]}"
+        elif job_status == 'failed':
+            logger.error(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
+            raise PermanentError(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
+        else:
+            logger.warning(f"Job status is still processing: {job_status}")
+            raise TransientError("Job still processing")
+        
     except httpx.HTTPError as e:
         logger.error(f"HTTP error while checking job status: {str(e)}")
         raise TransientError(f"Failed to check job status: {str(e)}") from e
@@ -385,20 +368,6 @@ async def periodic_job_check(
     )
     reset_user_data(context)
 
-async def api_post(url: str, headers: dict, json: dict) -> Tuple[bool, Optional[dict], Optional[str]]:
-    """Reusable function to perform a POST request with error handling."""
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, headers=headers, json=json)
-            response.raise_for_status()  # Raise an error for bad responses
-            return True, response.json(), None
-    except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error during POST request: {str(e)}")
-        return False, None, str(e)
-    except Exception as e:
-        logger.error(f"Unexpected error during POST request: {str(e)}")
-        return False, None, str(e)
-
 async def handle_successful_transaction(
     context: ContextTypes.DEFAULT_TYPE,
     message: Message,
@@ -419,7 +388,8 @@ async def handle_successful_transaction(
             logger.error("SQR_FUND_API_KEY not found in environment variables")
             raise PermanentError("API key not configured") from None
 
-        download_response = await api_post(
+        download_response = await api_request(
+            'post',
             "https://spaces.sqrfund.ai/api/async/download-spaces",
             headers={
                 "Content-Type": "application/json",
@@ -596,7 +566,20 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     space_url = parts[0]
     custom_prompt = parts[1]
-    logger.info("Custom prompt: %s", custom_prompt)
+    
+    # Validate the length of custom_prompt
+    MAX_PROMPT_LENGTH = 500  # Set a maximum length for the custom prompt
+    if len(custom_prompt) > MAX_PROMPT_LENGTH:
+        await update.message.reply_text(
+            f"❌ Your edit prompt is too long. Please limit it to {MAX_PROMPT_LENGTH} characters.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Sanitize the custom_prompt to remove potentially harmful content
+    sanitized_prompt = sanitize_input(custom_prompt)
+
+    logger.info("Custom prompt: %s", sanitized_prompt)
     logger.info("Space URL: %s", space_url)
 
     if not is_valid_space_url(space_url):
@@ -619,7 +602,8 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    edit_response = await api_post(
+    edit_response = await api_request(
+        'post',
         "https://spaces.sqrfund.ai/api/summarize-spaces",
         headers={
             "Content-Type": "application/json",
@@ -627,7 +611,7 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         },
         json={
             "spacesUrl": space_url,
-            "customPrompt": custom_prompt
+            "customPrompt": sanitized_prompt  # Use the sanitized prompt
         }
     )
 
@@ -646,4 +630,4 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_id=processing_msg.message_id,
         text=f"✅ Edited Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
         parse_mode=ParseMode.HTML
-    ) 
+    )
