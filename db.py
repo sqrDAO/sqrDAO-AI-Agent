@@ -177,7 +177,7 @@ class Database:
 
             # Store updated groups in the knowledge base
             try:
-                self.store_knowledge("groups", json.dumps([existing_groups]))
+                self.store_knowledge("groups", json.dumps(existing_groups))
                 logger.info(f"Successfully added group {chat_id} ({groupname}) to the knowledge base")
                 return True
             except Exception as e:
@@ -196,10 +196,13 @@ class Database:
 
             # Retrieve existing groups
             existing_groups = self.get_knowledge("groups")
+            logger.info(f"Raw existing groups: {existing_groups}")
+
+            # Check if existing_groups is a list of lists and access the first list
             if isinstance(existing_groups, str):
                 existing_groups = json.loads(existing_groups)  # Parse if it's a JSON string
 
-            # Flatten the nested list if necessary
+            # Access the first list of groups
             if isinstance(existing_groups, list) and len(existing_groups) > 0:
                 existing_groups = existing_groups[0]  # Get the first (and only) list
 
@@ -210,10 +213,12 @@ class Database:
             # Ensure existing_groups is a list
             if not isinstance(existing_groups, list):
                 logger.error(f"Expected a list of groups, but got {type(existing_groups)}")
-                return
+                return False
 
             # Find and remove the group
             updated_groups = [group for group in existing_groups if group['id'] != chat_id]
+            logger.info(f"Updated groups after removal attempt: {updated_groups}")
+
             if len(updated_groups) == len(existing_groups):
                 logger.warning(f"Group {chat_id} not found in the knowledge base.")
                 return
@@ -223,7 +228,7 @@ class Database:
                 bot_data['group_members'] = [group for group in bot_data['group_members'] if group['id'] != chat_id]
 
             # Store updated groups in the knowledge base
-            self.store_knowledge("groups", json.dumps([updated_groups]))  # Wrap in a list again
+            self.store_knowledge("groups", json.dumps(updated_groups))
             logger.info(f"Group {chat_id} removed from the knowledge base.")
 
         except Exception as e:
