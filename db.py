@@ -125,9 +125,17 @@ class Database:
                     logger.error("Failed to parse existing groups from knowledge base")
                     return None, False
             
-            # Flatten nested list if necessary
+            # Get the last element which contains the most recent group data
             if isinstance(existing_groups, list) and len(existing_groups) > 0:
-                existing_groups = existing_groups[0]
+                last_element = existing_groups[-1]
+                if isinstance(last_element, list):
+                    existing_groups = last_element
+                else:
+                    logger.error(f"Last element is not a list: {type(last_element)}")
+                    return None, False
+            else:
+                logger.error("No groups data found or data is not in expected format")
+                return None, False
             
             # Ensure existing_groups is a list
             if not isinstance(existing_groups, list):
@@ -140,17 +148,10 @@ class Database:
             return None, False
 
     def add_group(self, chat_id, groupname, bot_data) -> bool:
-        """Add the group to the 'groups' table and update bot_data.
-        
-        Args:
-            chat_id: The ID of the group to add
-            groupname: The name of the group
-            bot_data: The bot's data structure to update
-            
-        Returns:
-            bool: True if the group was successfully added, False otherwise
-        """
+        """Add the group to the 'groups' table and update bot_data."""
         try:
+            logger.info(f"Adding group: chat_id={chat_id}, groupname={groupname}")
+            
             # Input validation
             if not groupname or not str(groupname).strip():
                 logger.error("Invalid groupname: cannot be empty or whitespace")
@@ -170,6 +171,7 @@ class Database:
             # Retrieve existing groups
             existing_groups, success = self._get_validated_groups()
             if not success:
+                logger.error("Failed to validate existing groups.")
                 return False
 
             # Check if the group already exists
@@ -180,7 +182,7 @@ class Database:
             # Add new group with the provided groupname
             new_group = {
                 'id': chat_id,
-                'title': str(groupname).strip(),  # Ensure clean string
+                'title': str(groupname).strip(),
                 'type': 'group',
                 'added_at': datetime.now().isoformat()
             }
@@ -193,7 +195,7 @@ class Database:
 
             # Store updated groups in the knowledge base
             try:
-                with self.conn:  # Uses connection as context manager which handles commit/rollback
+                with self.conn:
                     self.store_knowledge("groups", json.dumps(existing_groups))
                     logger.info(f"Successfully added group {chat_id} ({groupname}) to the knowledge base")
                     return True
@@ -206,14 +208,7 @@ class Database:
             return False
 
     def remove_group(self, chat_id, bot_data) -> bool:
-        """Remove the group from the 'groups' table and update bot_data.     
-        Args:
-            chat_id: The ID of the group to remove
-            bot_data: The bot's data structure to update
-            
-        Returns:
-            bool: True if the group was successfully removed, False otherwise
-        """
+        """Remove the group from the 'groups' table and update bot_data."""
         try:
             # Ensure chat_id is an integer
             # Validate chat_id type first

@@ -131,16 +131,37 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
 async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_TYPE):
     """Handle group messages."""
     try:
+        # Log the entire message object for debugging
+        logger.info(f"Received group message object: {message}")
+
+        # Initialize group_members if not exists
+        if 'group_members' not in context.bot_data:
+            context.bot_data['group_members'] = []
+            logger.warning("group_members not initialized, using empty list")
+
+        # Handle different formats of group_members
+        group_members = context.bot_data['group_members']
+        if isinstance(group_members, dict):
+            # Convert dictionary to list of groups
+            group_members = [{'id': chat_id, 'title': title} for chat_id, title in group_members.items()]
+            context.bot_data['group_members'] = group_members
+            logger.info("Converted group_members from dict to list format")
+        elif not isinstance(group_members, list):
+            logger.error(f"group_members is not a list or dict: {type(group_members)}")
+            context.bot_data['group_members'] = []
+
         # Check if message is from a group where bot is a member
         if message.chat.id not in [group['id'] for group in context.bot_data['group_members']]:
             logger.warning(f"Message from non-member group: {message.chat.id}. Ignoring.")
             return
 
         # Check if the bot is mentioned in the message
-        if context.bot.username not in [
-            mention.user.username for mention in message.entities 
+        bot_mentioned = any(
+            mention.user.username == context.bot.username for mention in message.entities 
             if mention.type == 'mention' and mention.user is not None
-        ]:
+        )
+        
+        if not bot_mentioned:
             logger.info("Bot not mentioned in the message. Ignoring.")
             return
 
@@ -256,15 +277,18 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
         chat_member = update.my_chat_member
         chat_id = chat_member.chat.id
 
+        # Log the new membership status
+        logger.info(f"Chat ID: {chat_id}, New Status: {chat_member.new_chat_member.status}")
+
         # Check the bot's new membership status
         if chat_member.new_chat_member.status == "member":
             # Bot was added to the group
-            # Update the groups table in the database
+            logger.info(f"Bot added to group: {chat_member.chat.title}")
             db.add_group(chat_id, chat_member.chat.title, context.bot_data)
 
         elif chat_member.new_chat_member.status == "left":
             # Bot was removed from the group
-            # Update the groups table in the database
+            logger.info(f"Bot removed from group: {chat_member.chat.title}")
             db.remove_group(chat_id, context.bot_data)
 
     except Exception as e:
@@ -309,15 +333,20 @@ def main():
 
             try:
                 # Get the last element which contains the most recent group data
-                if isinstance(groups_data[-1], list) and groups_data[-1]:
-                    # Get the first element of the last list which contains the actual group data
-                    group_list = groups_data[-1][0]
-                    application.bot_data['group_members'] = group_list
+                last_element = groups_data[-1]
+                logger.info(f"Last element: {last_element}")
+                logger.info(f"Type of last element: {type(last_element)}")
+                
+                if isinstance(last_element, list):
+                    # The last element is already our list of groups
+                    application.bot_data['group_members'] = last_element
+                    logger.info(f"Group members: {application.bot_data['group_members']}")
                 else:
-                    logger.warning("Last element is not a list or is empty.")
+                    logger.warning("Last element is not a list.")
                     application.bot_data['group_members'] = []
             except Exception as e:
                 logger.error(f"Error processing groups data: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 application.bot_data['group_members'] = []
         except Exception as e:
             logger.error(f"Error loading groups data: {str(e)}")
