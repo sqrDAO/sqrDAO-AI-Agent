@@ -150,7 +150,7 @@ class Database:
     def add_group(self, chat_id, groupname, bot_data) -> bool:
         """Add the group to the 'groups' table and update bot_data."""
         try:
-            logger.info(f"Adding group: chat_id={chat_id}, groupname={groupname}")
+            logger.debug(f"Adding group: chat_id={chat_id}, groupname={groupname}")
             
             # Input validation
             if not groupname or not str(groupname).strip():
@@ -197,7 +197,7 @@ class Database:
             try:
                 with self.conn:
                     self.store_knowledge("groups", json.dumps(existing_groups))
-                    logger.info(f"Successfully added group {chat_id} ({groupname}) to the knowledge base")
+                    logger.debug(f"Successfully added group {chat_id} ({groupname}) to the knowledge base")
                     return True
             except Exception as e:
                 logger.error(f"Failed to store updated groups in knowledge base: {str(e)}")
@@ -229,12 +229,12 @@ class Database:
                 return False
 
             # Log the type and content of existing_groups
-            logger.info(f"Existing groups before removal: {existing_groups} (type: {type(existing_groups)})")
-            logger.info(f"Attempting to remove group with chat_id: {chat_id} (type: {type(chat_id)})")
+            logger.debug(f"Existing groups before removal: {existing_groups} (type: {type(existing_groups)})")
+            logger.debug(f"Attempting to remove group with chat_id: {chat_id} (type: {type(chat_id)})")
 
             # Find and remove the group
             updated_groups = [group for group in existing_groups if group['id'] != chat_id]
-            logger.info(f"Updated groups after removal attempt: {updated_groups}")
+            logger.debug(f"Updated groups after removal attempt: {updated_groups}")
 
             if len(updated_groups) == len(existing_groups):
                 logger.warning(f"Group {chat_id} not found in the knowledge base.")
@@ -248,7 +248,7 @@ class Database:
             try:
                 with self.conn:  # Uses connection as context manager
                     self.store_knowledge("groups", json.dumps(updated_groups))
-                    logger.info(f"Group {chat_id} removed from the knowledge base.")
+                    logger.debug(f"Group {chat_id} removed from the knowledge base.")
                     return True
             except Exception as e:
                 logger.error(f"Failed to store updated groups in knowledge base: {str(e)}")

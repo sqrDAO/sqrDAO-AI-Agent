@@ -171,7 +171,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             raise PermanentError("API key not configured") from None
         logger.debug("API key is present.")
 
-        logger.info(f"Checking job status for job ID: {job_id}")
+        logger.debug(f"Checking job status for job ID: {job_id}")
         success, data, error = await api_request(
             'get',
             f"https://spaces.sqrfund.ai/api/jobs/{job_id}",
@@ -346,11 +346,11 @@ async def periodic_job_check(
                                         part = part[split_point+1:]
                                         parts.insert(i+1, part)
 
-                            logger.info(f"Split summary into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
+                            logger.debug(f"Split summary into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
 
                             # Send each part as a new message
                             for count, part in enumerate(parts, 1):
-                                logger.info(f"Part {count} of {len(parts)}: {part}")
+                                logger.debug(f"Part {count} of {len(parts)}: {part[:50]}..." if len(part) > 50 else part)
                                 await context.bot.send_message(
                                     chat_id=chat_id,
                                     text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",
@@ -522,14 +522,14 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
     context.user_data['signature_attempts'] = attempts
 
     # Log the signature and attempt count
-    logger.info(f"Processing signature: {signature}, Attempt: {attempts}/3")
+    logger.debug(f"Processing signature: {signature}, Attempt: {attempts}/3")
 
     # Check transaction status
     success, status_message = await check_transaction_status(
         signature, command_start_time, space_url, request_type
     )
     
-    logger.info(f"Transaction status check result: success={success}, message={status_message}")
+    logger.debug(f"Transaction status check result: success={success}, message={status_message}")
 
     if success:
         await handle_successful_transaction(

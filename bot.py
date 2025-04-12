@@ -82,26 +82,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning("Received an empty message.")
             return
 
-        logger.info(f"Received message: {message.text} from {message.from_user.username}")
+        logger.debug(f"Received message: {message.text} from {message.from_user.username}")
 
         # Check if we're waiting for a transaction signature
         if context.user_data.get('awaiting_signature'):
-            logger.info("Awaiting signature, processing signature.")
+            logger.debug("Awaiting signature, processing signature.")
             await process_signature(message.text, context, message)
             return
 
         # If we're in the middle of a space summarization process, ignore other messages
         if context.user_data.get('space_url') and not context.user_data.get('awaiting_signature'):
-            logger.info("Ignoring message during space summarization process.")
+            logger.debug("Ignoring message during space summarization process.")
             return
         
-        logger.info(f"Message: {message.chat.type}")
+        logger.debug(f"Message: {message.chat.type}")
         # Process the message based on chat type
         if message.chat.type == 'private':
-            logger.info(f"Private message: {message.text} from {message.from_user.username}")
+            logger.debug(f"Private message: {message.text} from {message.from_user.username}")
             await handle_private_message(message, context)
         else:
-            logger.info(f"Group message: {message.text} from {message.from_user.username}")
+            logger.debug(f"Group message: {message.text} from {message.from_user.username}")
             await handle_group_message(message, context)
 
     except Exception as e:
@@ -132,7 +132,7 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
     """Handle group messages."""
     try:
         # Log the entire message object for debugging
-        logger.info(f"Received group message object: {message}")
+        logger.debug(f"Received group message from {message.from_user.username} in chat {message.chat.id}")
 
         # Initialize group_members if not exists
         if 'group_members' not in context.bot_data:
@@ -145,7 +145,7 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
             # Convert dictionary to list of groups
             group_members = [{'id': chat_id, 'title': title} for chat_id, title in group_members.items()]
             context.bot_data['group_members'] = group_members
-            logger.info("Converted group_members from dict to list format")
+            logger.debug("Converted group_members from dict to list format")
         elif not isinstance(group_members, list):
             logger.error(f"group_members is not a list or dict: {type(group_members)}")
             context.bot_data['group_members'] = []
@@ -162,7 +162,7 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
         )
         
         if not bot_mentioned:
-            logger.info("Bot not mentioned in the message. Ignoring.")
+            logger.debug("Bot not mentioned in the message. Ignoring.")
             return
 
         # Process message with context
@@ -267,7 +267,7 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
     """Handle updates to chat member status."""
     try:
         # Log the received update for debugging
-        logger.info(f"Received chat member update: {update}")
+        logger.debug(f"Received chat member update for chat: {update.my_chat_member.chat.id if update.my_chat_member else 'unknown'}")
 
         # Check if the update contains my_chat_member
         if not update.my_chat_member:
@@ -278,17 +278,17 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
         chat_id = chat_member.chat.id
 
         # Log the new membership status
-        logger.info(f"Chat ID: {chat_id}, New Status: {chat_member.new_chat_member.status}")
+        logger.debug(f"Chat ID: {chat_id}, New Status: {chat_member.new_chat_member.status}")
 
         # Check the bot's new membership status
         if chat_member.new_chat_member.status == "member":
             # Bot was added to the group
-            logger.info(f"Bot added to group: {chat_member.chat.title}")
+            logger.debug(f"Bot added to group: {chat_member.chat.title}")
             db.add_group(chat_id, chat_member.chat.title, context.bot_data)
 
         elif chat_member.new_chat_member.status == "left":
             # Bot was removed from the group
-            logger.info(f"Bot removed from group: {chat_member.chat.title}")
+            logger.debug(f"Bot removed from group: {chat_member.chat.title}")
             db.remove_group(chat_id, context.bot_data)
 
     except Exception as e:
@@ -334,13 +334,13 @@ def main():
             try:
                 # Get the last element which contains the most recent group data
                 last_element = groups_data[-1]
-                logger.info(f"Last element: {last_element}")
-                logger.info(f"Type of last element: {type(last_element)}")
+                logger.debug(f"Last element: {last_element}")
+                logger.debug(f"Type of last element: {type(last_element)}")
                 
                 if isinstance(last_element, list):
                     # The last element is already our list of groups
                     application.bot_data['group_members'] = last_element
-                    logger.info(f"Group members: {application.bot_data['group_members']}")
+                    logger.debug(f"Group members: {application.bot_data['group_members']}")
                 else:
                     logger.warning("Last element is not a list.")
                     application.bot_data['group_members'] = []

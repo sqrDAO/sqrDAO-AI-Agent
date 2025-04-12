@@ -196,7 +196,7 @@ async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📝 No members found.",
             parse_mode=ParseMode.HTML
         )
-        logger.info("No members found in the list.")  # Log when no members are found
+        logger.debug("No members found in the list.")  # Log when no members are found
         return
         
     members_text = "<b>Current Members:</b>\n\n"
@@ -253,7 +253,7 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     groups_text = "<b>Tracked Groups:</b>\n\n"
     groups = context.bot_data.get('group_members', [])
-    logger.info(f"Tracked groups: {groups}")
+    logger.debug(f"Tracked groups count: {len(groups)}")
     
     # Handle case where groups is a list of dictionaries or a single list
     if isinstance(groups, list):
