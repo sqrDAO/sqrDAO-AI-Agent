@@ -350,7 +350,7 @@ async def periodic_job_check(
 
                             # Send each part as a new message
                             for count, part in enumerate(parts, 1):
-                                logger.debug(f"Part {count} of {len(parts)}: {part}")
+                                logger.debug(f"Part {count} of {len(parts)}: {part[:50]}..." if len(part) > 50 else part)
                                 await context.bot.send_message(
                                     chat_id=chat_id,
                                     text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",

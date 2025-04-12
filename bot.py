@@ -132,7 +132,7 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
     """Handle group messages."""
     try:
         # Log the entire message object for debugging
-        logger.debug(f"Received group message object: {message}")
+        logger.debug(f"Received group message from {message.from_user.username} in chat {message.chat.id}")
 
         # Initialize group_members if not exists
         if 'group_members' not in context.bot_data:
@@ -267,7 +267,7 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
     """Handle updates to chat member status."""
     try:
         # Log the received update for debugging
-        logger.debug(f"Received chat member update: {update}")
+        logger.debug(f"Received chat member update for chat: {update.my_chat_member.chat.id if update.my_chat_member else 'unknown'}")
 
         # Check if the update contains my_chat_member
         if not update.my_chat_member:

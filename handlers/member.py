@@ -253,7 +253,7 @@ async def list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     groups_text = "<b>Tracked Groups:</b>\n\n"
     groups = context.bot_data.get('group_members', [])
-    logger.debug(f"Tracked groups: {groups}")
+    logger.debug(f"Tracked groups count: {len(groups)}")
     
     # Handle case where groups is a list of dictionaries or a single list
     if isinstance(groups, list):
