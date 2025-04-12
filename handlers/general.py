@@ -177,7 +177,7 @@ def find_authorized_member_by_username(username: str, context: ContextTypes.DEFA
 
 def find_member_by_username(username: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[dict]:
     """Find a regular member by username."""
-    for member in context.bot_data['members']:
+    for member in context.bot_data['members'] + context.bot_data['authorized_members']:
         if member['username'] == username:
             return member
     return None 
