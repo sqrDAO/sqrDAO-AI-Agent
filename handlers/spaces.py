@@ -27,6 +27,7 @@ from config import (
     SQR_PURCHASE_LINK,
     MAX_PROMPT_LENGTH
 )
+from handlers.general import find_member_by_username  # Ensure this import is at the top of your file
 
 logger = logging.getLogger(__name__)
 
@@ -533,6 +534,16 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
 async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /summarize_space command with improved error handling."""
     try:
+        # Check if the user is a member using find_member_by_username
+        username = update.effective_user.username
+        
+        if not find_member_by_username(username, context.bot_data.get('members', [])):
+            await update.message.reply_text(
+                "❌ You do not have permission to use this command. Please contact an admin for access.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
         if not context.args:
             await update.message.reply_text(
                 "Please provide the X Space URL and the request type (text or audio) after the command.\n\n"

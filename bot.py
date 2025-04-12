@@ -409,8 +409,7 @@ def main():
             ("request_member", "Request member access"),
             ("resources", "Access member resources"),
             ("balance", "Check SQR token balance"),
-            ("sqr_info", "Get SQR token information"),
-            ("summarize_space", "Summarize a Twitter Space")
+            ("sqr_info", "Get SQR token information")
         ]
         
         application.bot.set_my_commands(commands)
