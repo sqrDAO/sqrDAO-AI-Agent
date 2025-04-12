@@ -324,25 +324,45 @@ async def periodic_job_check(
                                 parts.append(remaining[:split_point+1])
                                 remaining = remaining[split_point+1:]
 
-                                if remaining:
-                                    parts.append(remaining)
+                            # Add any remaining text that's within the limit
+                            if remaining:
+                                parts.append(remaining)
 
-                                logger.info(f"Split summary into {len(parts)} parts")
+                            # Verify all parts are within the limit
+                            for i, part in enumerate(parts):
+                                if len(part) > max_length:
+                                    logger.warning(f"Part {i+1} exceeds max length ({len(part)} > {max_length})")
+                                    # Split the oversized part
+                                    while len(part) > max_length:
+                                        split_point = part[:max_length].rfind('\n\n')
+                                        if split_point < max_length // 2:
+                                            split_point = part[:max_length].rfind('. ')
+                                        if split_point < max_length // 2:
+                                            split_point = part[:max_length].rfind(' ')
+                                        if split_point < 0:
+                                            split_point = max_length
+                                        
+                                        parts[i] = part[:split_point+1]
+                                        part = part[split_point+1:]
+                                        parts.insert(i+1, part)
 
-                                for count, part in enumerate(parts, 1):
-                                    logger.info(f"Split into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
-                                    await context.bot.edit_message_text(
-                                        chat_id=chat_id,
-                                        message_id=message_id,
-                                        text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",
-                                        parse_mode=ParseMode.HTML
-                                    )
-                                await context.bot.edit_message_text(
+                            logger.info(f"Split summary into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
+
+                            # Send each part as a new message
+                            for count, part in enumerate(parts, 1):
+                                logger.info(f"Part {count} of {len(parts)}: {part}")
+                                await context.bot.send_message(
                                     chat_id=chat_id,
-                                    message_id=message_id,
-                                    text="If you would like to make suggestions or edits, use the command /edit_summary.",
+                                    text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",
                                     parse_mode=ParseMode.HTML
                                 )
+                            
+                            # Send the edit suggestion message
+                            await context.bot.send_message(
+                                chat_id=chat_id,
+                                text="If you would like to make suggestions or edits, use the command /edit_summary.",
+                                parse_mode=ParseMode.HTML
+                            )
                         else:
                             await context.bot.edit_message_text(
                                 chat_id=chat_id,
