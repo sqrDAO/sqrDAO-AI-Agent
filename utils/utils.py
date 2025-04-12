@@ -17,6 +17,9 @@ def is_valid_space_url(url: str) -> bool:
 
 def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
     """Format text to be compatible with Telegram's HTML formatting."""
+    logger.debug(f"Formatting response for Telegram with parse_mode: {parse_mode}")  # Log parse mode
+    logger.debug(f"Input text: {text}")  # Log input text
+
     if parse_mode == 'HTML':
         # First escape all HTML special characters
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
@@ -39,6 +42,7 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         # Sanitize the HTML to remove unsupported tags and fix any issues
         text = bleach.clean(text, tags=allowed_tags, strip=True)
 
+        logger.debug(f"Formatted text: {text}")  # Log the formatted text
         return text
     return text  # Return unmodified text if parse mode is not recognized
 

@@ -4,7 +4,7 @@ from telegram.ext.filters import BaseFilter
 import logging
 
 # Initialize the logger
-logging.basicConfig(level=logging.ERROR)  # Set the logging level as needed
+logging.basicConfig(level=logging.DEBUG)  # Set the logging level as needed
 logger = logging.getLogger(__name__)
 
 # Load environment variables
