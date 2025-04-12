@@ -124,6 +124,8 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
 
     except Exception as e:
         await message.reply_text(
+            logger.debug(f"Error processing private message from {message.from_user.username}: {str(e)}")
+            logger.debug(f"Message content: {message.text}")
             get_error_message('general_error'),
             parse_mode=ParseMode.HTML
         )
