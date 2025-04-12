@@ -50,12 +50,12 @@ I'm your AI assistant for sqrDAO, developed by sqrFUND! Here's what I can do:
 • /balance - Check $SQR token balance
 • /sqr_info - Get information about $SQR token
 • /request_member - Request to become a member
-• /summarize_space - Summarize an X space
 """
 
     if is_authorized or is_regular_member:
         help_text += """
 <b>Member Commands:</b>
+• /summarize_space - Summarize an X space
 • /resources - Access internal resources for sqrDAO Members and sqrFUND Chads
 """
 
@@ -177,7 +177,7 @@ def find_authorized_member_by_username(username: str, context: ContextTypes.DEFA
 
 def find_member_by_username(username: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[dict]:
     """Find a regular member by username."""
-    for member in context.bot_data['members']:
+    for member in context.bot_data['members'] + context.bot_data['authorized_members']:
         if member['username'] == username:
             return member
     return None 
