@@ -116,6 +116,8 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
     try:
         # Process message with context
         response = await process_message_with_context_and_reply(message, context)
+        logger.debug(f"Response generated for {message.from_user.username}: {response}")  # Log the response
+        
         if response:
             await message.reply_text(
                 format_response_for_telegram(response, 'HTML'),
