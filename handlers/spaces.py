@@ -202,8 +202,7 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                 },
                 json={
                     "spacesUrl": space_url,
-                    "promptType": "formatted",
-                    "customPrompt": "Summarize the space in a way that is easy to understand and useful for the user. Keep the length of the summary under 4000 characters."
+                    "promptType": "formatted"
                 }
             )
             
@@ -361,7 +360,7 @@ async def periodic_job_check(
                             # Send the edit suggestion message
                             await context.bot.send_message(
                                 chat_id=chat_id,
-                                text="If you would like to make suggestions or edits, use the command /edit_summary.",
+                                text="If you would like a shorter version, please use /shorten_summary.\n\nAlternnatively, if you would like to make suggestions or edits, use the command /edit_summary.",
                                 parse_mode=ParseMode.HTML
                             )
                         else:
@@ -694,6 +693,70 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         json={
             "spacesUrl": space_url,
             "customPrompt": sanitized_prompt  # Use the sanitized prompt
+        }
+    )
+
+    if not edit_response[0]:  # If the request failed
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_msg.message_id,
+            text=f"❌ Failed to edit summary: {edit_response[2]}",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    summary_data = edit_response[1]
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=processing_msg.message_id,
+        text=f"✅ Edited Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
+        parse_mode=ParseMode.HTML
+    )
+
+async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /shorten_summary command to allow users to shorten the summary."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide the space URL.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    space_url = context.args[0]
+
+    if not is_valid_space_url(space_url):
+        await update.message.reply_text(
+            "❌ Invalid space URL format. Please provide a valid URL.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Create a default prompt to shorten the summary
+    custom_prompt = "Please summarize the content in a concise manner while keeping it under 4000 characters."
+
+    api_key = os.getenv('SQR_FUND_API_KEY')
+    if not api_key:
+        await update.message.reply_text(
+            "❌ API key not configured. Please contact support.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    processing_msg = await update.message.reply_text(
+        "🔄 Processing your edit request (this may take up to 60 seconds)...",
+        parse_mode=ParseMode.HTML
+    )
+
+    edit_response = await api_request(
+        'post',
+        "https://spaces.sqrfund.ai/api/summarize-spaces",
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": api_key
+        },
+        json={
+            "spacesUrl": space_url,
+            "customPrompt": sanitize_input(custom_prompt)  # Use the sanitized prompt
         }
     )
 
