@@ -202,7 +202,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                 },
                 json={
                     "spacesUrl": space_url,
-                    "promptType": "formatted"
+                    "promptType": "formatted",
+                    "customPrompt": "Summarize the space in a way that is easy to understand and useful for the user. Keep the length of the summary under 4000 characters."
                 }
             )
             
