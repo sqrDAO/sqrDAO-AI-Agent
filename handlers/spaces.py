@@ -378,8 +378,8 @@ async def periodic_job_check(
                     return
                 
                 # Check for 502 error
-                if "502 Server Error" in result:
-                    logger.error("Received 502 Server Error during summarization")
+                if "502 Bad Gateway" in result:
+                    logger.error("Received 502 Bad Gateway Server Error during summarization")
                     await context.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
