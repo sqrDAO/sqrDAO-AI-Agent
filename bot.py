@@ -82,8 +82,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning("Received an empty message.")
             return
 
-        logger.debug(f"Received message: {message.text} from {message.from_user.username}")
-
         # Check if we're waiting for a transaction signature
         if context.user_data.get('awaiting_signature'):
             logger.debug("Awaiting signature, processing signature.")
@@ -95,14 +93,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.debug("Ignoring message during space summarization process.")
             return
         
-        logger.debug(f"Message: {message.chat.type}")
         # Process the message based on chat type
         if message.chat.type == 'private':
-            logger.debug(f"Private message: {message.text} from {message.from_user.username}")
             await handle_private_message(message, context)
-        else:
-            logger.debug(f"Group message: {message.text} from {message.from_user.username}")
+        elif message.chat.type in ['group', 'supergroup']:  # Added group and supergroup check
             await handle_group_message(message, context)
+        else:
+            logger.warning(f"Unhandled chat type: {message.chat.type}")
 
     except Exception as e:
         logger.error(f"Error in handle_message: {str(e)}")
@@ -160,11 +157,29 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
             return
 
         # Check if the bot is mentioned in the message
-        bot_mentioned = any(
-            mention.user.username == context.bot.username for mention in message.entities 
-            if mention.type == 'mention' and mention.user is not None
-        )
+        bot_username_with_at = f"@{context.bot.username}"
+        bot_mentioned = False
+        for entity in message.entities:
+        # Check if it's a mention entity
+            if entity.type == telegram.constants.MessageEntityType.MENTION:
+            # Extract the actual text corresponding to the entity
+                start = entity.offset
+                end = start + entity.length
+                mentioned_text = message.text[start:end]
+
+                logger.debug(f"Checking mention entity: Type={entity.type}, Offset={start}, Length={entity.length}, Text='{mentioned_text}'")
+
+                # Compare the extracted text directly with the bot's username
+                if mentioned_text == bot_username_with_at:
+                    bot_mentioned = True
+                    break # Exit loop once mention is found
         
+        # Log the result of the mention check
+        if bot_mentioned:
+            logger.debug(f"Bot mentioned in message: {message.text}")
+        else:
+            logger.warning(f"Bot not mentioned in message: {message.text}")
+
         if not bot_mentioned:
             logger.debug("Bot not mentioned in the message. Ignoring.")
             return
@@ -383,21 +398,21 @@ def main():
         application.add_handler(CommandHandler("edit_summary", edit_summary))
         application.add_handler(CommandHandler("shorten_summary", shorten_summary))
         # Add message handler
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        application.add_handler(MessageHandler(filters.TEXT, handle_message))  # Removed command filter
 
         # Add handler for documents with mass_message command in caption using custom filter
         application.add_handler(MessageHandler(
-            DocumentWithMassMessageCaption() & filters.COMMAND, mass_message
+            DocumentWithMassMessageCaption() & filters.ChatType.PRIVATE, mass_message
         ))
 
         # Add handler for photos with mass_message command in caption
         application.add_handler(MessageHandler(
-            filters.PHOTO & filters.CaptionRegex(r'^/mass_message') & filters.COMMAND, mass_message
+            filters.PHOTO & filters.CaptionRegex(r'^/mass_message') & filters.ChatType.PRIVATE, mass_message
         ))
 
         # Add handler for videos with mass_message command in caption
         application.add_handler(MessageHandler(
-            filters.VIDEO & filters.CaptionRegex(r'^/mass_message') & filters.COMMAND, mass_message
+            filters.VIDEO & filters.CaptionRegex(r'^/mass_message') & filters.ChatType.PRIVATE, mass_message
         ))
 
         # Add chat member update handler

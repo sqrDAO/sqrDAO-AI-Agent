@@ -166,7 +166,6 @@ def parse_mass_message_input(raw_input: str) -> tuple[str, Optional[str]]:
         # If we have both parts, strip whitespace and return
         message = parts[0].strip()
         grouptype = parts[1].strip().lower()
-        logger.info(f"Message: {message}, Grouptype: {grouptype}")
         # Validate grouptype
         if grouptype not in ['sqrdao', 'sqrfund', 'summit', 'both']:
             grouptype = None
