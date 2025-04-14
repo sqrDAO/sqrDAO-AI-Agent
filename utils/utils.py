@@ -54,8 +54,13 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         text = text.replace('\\"', '"').replace("\\'", "'")
 
         # Format hyperlinks correctly
-        # Convert Markdown links to HTML links: [link text](URL) -> <a href="URL">link text</a>
-        text = re.sub(r'\[([^\]]+)\]\((https?://\S+)\)', r'<a href="\2">\1</a>', text)
+        # Convert Markdown links to HTML links with more robust regex
+        # Handles URLs with special characters and prevents partial matches
+        text = re.sub(
+            r'\[([^\]]+)\]\((https?://[^\s<>()]+(?:\([^\s<>()]*\)|[^\s<>()]*)*)\)',
+            r'<a href="\2">\1</a>',
+            text
+        )
         
         # Sanitize the HTML to remove unsupported tags and fix any issues
         text = bleach.clean(text, tags=allowed_tags, attributes=allowed_attributes, strip=True)
@@ -285,11 +290,11 @@ def extract_keywords(message):
                    'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over',
                    'under', 'again', 'further', 'then', 'once', 'here', 'there', 'all', 'any', 'both', 
                    'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 
-+                  'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'just', 'don', 'now'}
+                   'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'just', 'don', 'now'}
 
     words = message.lower().split()
-    keywords = [re.sub(r'\W+', '', word) for word in words if len(word) > 2 and word not in stop_words]
-    return list(set(keywords))  # Return unique keywords
+    # Use set comprehension directly for better performance
+    return {re.sub(r'\W+', '', word) for word in words if len(word) > 2 and word not in stop_words}
 
 async def retrieve_knowledge(db, keywords):
     """Retrieve knowledge for each keyword and aggregate results."""

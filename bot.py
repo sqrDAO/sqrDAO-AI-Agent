@@ -205,12 +205,22 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
     try:
         # Get relevant context from previous conversations
         context_messages = db.get_relevant_context(message.from_user.id, message.text)
-        
+
+        # Log the context_messages
+        logger.debug(f"context_messages: {context_messages}, type: {type(context_messages)}")
+
         # Prepare context for the model
-        context_text = "\n".join([f"Previous: {msg[0]}\nResponse: {msg[1]}" for msg in context_messages if len(msg) == 2])
-        
+        context_text = " ".join(
+            [f"Previous: {msg[0]} Response: {msg[1]}" for msg in context_messages if len(msg) >= 2 and msg[0] and msg[1]]
+        )
+
+        # Log the context_text
+        logger.debug(f"context_text: {context_text}, type: {type(context_text)}")
+
         # Process message with context
         response = await process_message_with_context(message.text, context_text)
+
+        logger.debug(f"response: {response}, type: {type(response)}")
         
         # Store conversation
         db.store_conversation(
@@ -228,19 +238,42 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
 
 async def process_message_with_context(message, context):
     """Process the message with context and prepare the response."""
-    
+    logger.debug(f"Processing message with context: {message}, type: {type(message)}")
+
+    # Check if message is a valid string
+    if not isinstance(message, str) or not message.strip():
+        logger.error("Invalid message input. Must be a non-empty string.")
+        return "Invalid message input."
+
     # Step 1: Extract meaningful keywords
     keywords = extract_keywords(message)
+    
+    logger.debug(f"Keywords: {keywords}, type: {type(keywords)}")
     
     # Step 2: Retrieve relevant knowledge
     knowledge_text = await retrieve_knowledge(db, keywords)
     
+    # Log the types of knowledge_text and message
+    logger.debug(f"knowledge_text: {knowledge_text}, type: {type(knowledge_text)}")
+    logger.debug(f"message: {message}, type: {type(message)}")
+
+    # Ensure knowledge_text is a string
+    if not isinstance(knowledge_text, str):
+        logger.error(f"Expected knowledge_text to be a string, got {type(knowledge_text)}")
+        knowledge_text = str(knowledge_text)  # Convert to string if necessary
+
     # Step 3: Format context
     context_text = format_context(context)
     
+    # Log the type of context_text
+    logger.debug(f"context_text: {context_text}, type: {type(context_text)}")
+
     # Step 4: Combine context with current message and knowledge
     prompt = f"{context_text}\n{knowledge_text}\nCurrent message: {message}\n\nPlease provide a response that takes into account both the context of previous conversations and the stored knowledge if relevant."
     
+    # Log the prompt
+    logger.debug(f"prompt: {prompt}, type: {type(prompt)}")
+
     try:
         # Generate response using Gemini
         response = model.generate_content(prompt)
@@ -251,6 +284,7 @@ async def process_message_with_context(message, context):
         return response.text
         
     except Exception as e:
+        logger.error(f"Error in process_message_with_context: {str(e)}")
         return "I encountered an error while processing your message. Please try again."
 
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -275,7 +275,14 @@ class Database:
                 return []  # Return an empty list if no valid data
 
             for member_list in members_data:
+                if not isinstance(member_list, list):
+                    logger.warning(f"Expected a list of members, got {type(member_list)}")
+                    continue
                 for member in member_list:
+                    if not isinstance(member, dict):
+                        logger.warning(f"Expected a member dictionary, got {type(member)}")
+                        continue
+                    
                     # Add unique members based on username
                     if member.get('username') and member.get('user_id'):
                         unique_members.add((member['username'], member['user_id']))
