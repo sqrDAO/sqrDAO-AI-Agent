@@ -8,6 +8,7 @@ from utils.retry import with_retry, TransientError
 from config import ERROR_MESSAGES, SUCCESS_MESSAGES, SQR_TOKEN_MINT
 import json
 import bleach  # Add this import
+from telegram.constants import ParseMode  # Import ParseMode
 
 logger = logging.getLogger(__name__)
 
@@ -235,3 +236,23 @@ async def api_request(method: str, url: str, headers: dict = None, json: dict = 
     except Exception as e:
         logger.error(f"Unexpected error during {method} request: {str(e)}")
         return False, None, str(e)
+
+async def process_summary_api_response(context, update, edit_response, processing_msg):
+    """Handle API response for summary operations."""
+    if not edit_response[0]:  # If the request failed
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_msg.message_id,
+            text=f"❌ Failed to process summary: {edit_response[2]}",
+            parse_mode=ParseMode.HTML
+        )
+        return False
+
+    summary_data = edit_response[1]
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=processing_msg.message_id,
+        text=f"✅ Processed Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
+        parse_mode=ParseMode.HTML
+    )
+    return True

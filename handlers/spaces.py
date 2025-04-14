@@ -13,8 +13,9 @@ from gtts import gTTS
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
 from solders.signature import Signature
+from handlers.general import find_member_by_username  # Ensure this import is at the top of your file
 from utils.retry import with_retry, TransientError, PermanentError
-from utils.utils import is_valid_space_url, sanitize_input, api_request
+from utils.utils import is_valid_space_url, sanitize_input, api_request, process_summary_api_response
 from config import (
     TEXT_SUMMARY_COST,
     AUDIO_SUMMARY_COST,
@@ -27,7 +28,6 @@ from config import (
     SQR_PURCHASE_LINK,
     MAX_PROMPT_LENGTH
 )
-from handlers.general import find_member_by_username  # Ensure this import is at the top of your file
 
 logger = logging.getLogger(__name__)
 
@@ -552,26 +552,6 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
                 "Please try again with a valid signature.",
                 parse_mode=ParseMode.HTML
             )
-
-async def process_summary_api_response(context, update, edit_response, processing_msg):
-    """Handle API response for summary operations."""
-    if not edit_response[0]:  # If the request failed
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=processing_msg.message_id,
-            text=f"❌ Failed to process summary: {edit_response[2]}",
-            parse_mode=ParseMode.HTML
-        )
-        return False
-
-    summary_data = edit_response[1]
-    await context.bot.edit_message_text(
-        chat_id=update.effective_chat.id,
-        message_id=processing_msg.message_id,
-        text=f"✅ Processed Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
-        parse_mode=ParseMode.HTML
-    )
-    return True
 
 async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /edit_summary command to allow users to suggest edits."""
