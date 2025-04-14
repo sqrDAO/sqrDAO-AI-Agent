@@ -45,9 +45,6 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         # Ensure 'a' is included for hyperlinks
         # And that it allows 'href' attribute
         allowed_tags = ['b', 'i', 'u', 'pre', 'code', 'a']
-        
-        # Sanitize the HTML to remove unsupported tags and fix any issues
-        text = bleach.clean(text, tags=allowed_tags, strip=True)
 
         # Remove escape characters for quotes
         text = text.replace("\\", "")
@@ -55,6 +52,9 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         # Format hyperlinks correctly
         # Convert Markdown links to HTML links: [link text](URL) -> <a href="URL">link text</a>
         text = re.sub(r'\[([^\]]+)\]\((https?://\S+)\)', r'<a href="\2">\1</a>', text)
+        
+        # Sanitize the HTML to remove unsupported tags and fix any issues
+        text = bleach.clean(text, tags=allowed_tags, strip=True)
 
         logger.debug(f"Formatted text: {text}")  # Log the formatted text
         return text
