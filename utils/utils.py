@@ -288,13 +288,13 @@ def extract_keywords(message):
     keywords = [re.sub(r'\W+', '', word) for word in words if len(word) > 2 and word not in stop_words]
     return list(set(keywords))  # Return unique keywords
 
-async def retrieve_knowledge(self, keywords):
+async def retrieve_knowledge(db, keywords):
     """Retrieve knowledge for each keyword and aggregate results."""
     knowledge_text = ""
     if keywords:
         knowledge_text = "\nStored knowledge:\n"
         for keyword in set(keywords):
-            knowledge = self.get_knowledge(keyword)
+            knowledge = db.get_knowledge(keyword)
             if knowledge:
                 for info in knowledge:
                     knowledge_text += f"• {info}\n"
@@ -308,6 +308,9 @@ def format_context(context):
         for entry in context:
             if len(entry) >= 2:
                 prev_msg, prev_resp = entry[:2]
+                # Sanitize user input to prevent injection
+                prev_msg = sanitize_input(prev_msg)
+                prev_resp = sanitize_input(prev_resp)
                 context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
             else:
                 logger.warning(f"Unexpected context format: {entry}")

@@ -289,6 +289,10 @@ class Database:
             if not groups_data or not isinstance(groups_data, list):
                 logger.warning("No groups data found or data is not in expected format.")
                 return []  # Return an empty list if no valid data
+            
+            if len(groups_data) == 0:
+                logger.warning("Groups data is an empty list.")
+                return []
 
             # Get the last element which contains the most recent group data
             last_element = groups_data[-1]
