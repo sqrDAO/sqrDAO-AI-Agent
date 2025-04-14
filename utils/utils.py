@@ -255,3 +255,47 @@ async def process_summary_api_response(context, update, edit_response, processin
         parse_mode=ParseMode.HTML
     )
     return True
+
+
+def extract_keywords(message):
+    """Extract meaningful keywords by removing stop words and short words."""
+    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                   'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'shall', 'should', 'may',
+                   'might', 'must', 'can', 'could', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my',
+                   'your', 'his', 'her', 'its', 'our', 'their', 'this', 'that', 'these', 'those', 'what',
+                   'which', 'who', 'whom', 'whose', 'where', 'when', 'why', 'how', 'in', 'on', 'at', 'by',
+                   'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before',
+                   'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over',
+                   'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why',
+                   'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+                   'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can',
+                   'will', 'just', 'don', 'should', 'now'}
+
+    words = message.lower().split()
+    keywords = [re.sub(r'\W+', '', word) for word in words if len(word) > 2 and word not in stop_words]
+    return list(set(keywords))  # Return unique keywords
+
+async def retrieve_knowledge(self, keywords):
+    """Retrieve knowledge for each keyword and aggregate results."""
+    knowledge_text = ""
+    if keywords:
+        knowledge_text = "\nStored knowledge:\n"
+        for keyword in set(keywords):
+            knowledge = self.get_knowledge(keyword)
+            if knowledge:
+                for info in knowledge:
+                    knowledge_text += f"• {info}\n"
+    return knowledge_text
+
+def format_context(context):
+    """Format the context for the AI model."""
+    context_text = ""
+    if context:
+        context_text = "Previous relevant conversations:\n"
+        for entry in context:
+            if len(entry) >= 2:
+                prev_msg, prev_resp = entry[:2]
+                context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
+            else:
+                logger.warning(f"Unexpected context format: {entry}")
+    return context_text

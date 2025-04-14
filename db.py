@@ -257,3 +257,51 @@ class Database:
         except Exception as e:
             logger.error(f"Error removing group {chat_id}: {str(e)}") 
             return False
+
+    def load_members(self):
+        """Load unique members from the database."""
+        try:
+            members_data = self.get_knowledge("members")
+            unique_members = set()  # Use a set to avoid duplicates
+            
+            if not members_data or not isinstance(members_data, list):
+                logger.warning("No members data found or data is not in expected format.")
+                return []  # Return an empty list if no valid data
+
+            for member_list in members_data:
+                for member in member_list:
+                    # Add unique members based on username
+                    if member.get('username') and member.get('user_id'):
+                        unique_members.add((member['username'], member['user_id']))
+
+            # Convert the set back to a list of dictionaries
+            return [{'username': username, 'user_id': user_id} for username, user_id in unique_members]
+
+        except Exception as e:
+            logger.error(f"Error loading members: {str(e)}")
+            return []  # Fallback to an empty list on error
+
+    def load_groups(self):
+        """Load groups from the database."""
+        try:
+            groups_data = self.get_knowledge("groups")
+
+            if not groups_data or not isinstance(groups_data, list):
+                logger.warning("No groups data found or data is not in expected format.")
+                return []  # Return an empty list if no valid data
+
+            # Get the last element which contains the most recent group data
+            last_element = groups_data[-1]
+            logger.debug(f"Last element: {last_element}")
+            logger.debug(f"Type of last element: {type(last_element)}")
+
+            if isinstance(last_element, list):
+                # The last element is already our list of groups
+                return last_element
+            else:
+                logger.warning("Last element is not a list.")
+                return []  # Return an empty list if the last element is not a list
+
+        except Exception as e:
+            logger.error(f"Error loading groups: {str(e)}")
+            return []  # Fallback to an empty list on error

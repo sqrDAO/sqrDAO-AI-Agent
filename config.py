@@ -4,7 +4,7 @@ from telegram.ext.filters import BaseFilter
 import logging
 
 # Initialize the logger
-logging.basicConfig(level=logging.INFO)  # Set the logging level as needed
+logging.basicConfig(level=logging.DEBUG)  # Set the logging level as needed
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -87,7 +87,7 @@ generation_config = {
     "temperature": 0.9,
     "top_p": 1,
     "top_k": 1,
-    "max_output_tokens": 2048,
+    "max_output_tokens": 4096,
 }
 
 safety_settings = [
