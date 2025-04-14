@@ -360,7 +360,8 @@ async def periodic_job_check(
                             # Send the edit suggestion message
                             await context.bot.send_message(
                                 chat_id=chat_id,
-                                text="If you would like a shorter version, please use /shorten_summary.\n\nAlternnatively, if you would like to make suggestions or edits, use the command /edit_summary.",
+                                text="If you would like a shorter version, please use /shorten_summary.\n\n"
+                                "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary.",
                                 parse_mode=ParseMode.HTML
                             )
                         else:
@@ -368,7 +369,8 @@ async def periodic_job_check(
                                 chat_id=chat_id,
                                 message_id=message_id,
                                 text=f"✅ Summary completed!\n\n{summary_text}\n\n"
-                                     "If you would like to make suggestions or edits, use the command /edit_summary.",
+                                     "If you would like a shorter version, please use /shorten_summary.\n\n"
+                                     "AlternativelyIf you would like to make suggestions or edits, use the command /edit_summary.",
                                 parse_mode=ParseMode.HTML
                             )
                     
@@ -376,12 +378,12 @@ async def periodic_job_check(
                     return
                 
                 # Check for 502 error
-                if result.startswith("⚠️ <b>Summarization Service Temporarily Unavailable</b>"):
+                if "502 Server Error" in result:
                     logger.error("Received 502 Server Error during summarization")
                     await context.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=result,  # Send the error message to the user
+                        text="❌ The summarization service is temporarily unavailable. Please try again later.",
                         parse_mode=ParseMode.HTML
                     )
                     return  # Exit the function after sending the message
@@ -551,6 +553,144 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
                 parse_mode=ParseMode.HTML
             )
 
+async def process_summary_api_response(context, update, edit_response, processing_msg):
+    """Handle API response for summary operations."""
+    if not edit_response[0]:  # If the request failed
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_msg.message_id,
+            text=f"❌ Failed to process summary: {edit_response[2]}",
+            parse_mode=ParseMode.HTML
+        )
+        return False
+
+    summary_data = edit_response[1]
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=processing_msg.message_id,
+        text=f"✅ Processed Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
+        parse_mode=ParseMode.HTML
+    )
+    return True
+
+async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /edit_summary command to allow users to suggest edits."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide the content for the summary edit.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    full_prompt = " ".join(context.args)
+    parts = full_prompt.split(" ", 1)
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "❌ Please provide both the space URL and the edit prompt.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    space_url = parts[0]
+    custom_prompt = parts[1]
+    
+    # Validate the length of custom_prompt
+    if len(custom_prompt) > MAX_PROMPT_LENGTH:
+        await update.message.reply_text(
+            f"❌ Your edit prompt is too long. Please limit it to {MAX_PROMPT_LENGTH} characters.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Sanitize the custom_prompt to remove potentially harmful content
+    sanitized_prompt = sanitize_input(custom_prompt)
+
+    if not is_valid_space_url(space_url):
+        await update.message.reply_text(
+            "❌ Invalid space URL format. Please provide a valid URL.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    api_key = os.getenv('SQR_FUND_API_KEY')
+    if not api_key:
+        await update.message.reply_text(
+            "❌ API key not configured. Please contact support.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    processing_msg = await update.message.reply_text(
+        "🔄 Processing your edit request (this may take up to 60 seconds)...",
+        parse_mode=ParseMode.HTML
+    )
+
+    edit_response = await api_request(
+        'post',
+        "https://spaces.sqrfund.ai/api/summarize-spaces",
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": api_key
+        },
+        json={
+            "spacesUrl": space_url,
+            "customPrompt": sanitized_prompt  # Use the sanitized prompt
+        }
+    )
+
+    # Use the new helper function to process the response
+    await process_summary_api_response(context, update, edit_response, processing_msg)
+
+async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /shorten_summary command to allow users to shorten the summary."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide the space URL.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    space_url = context.args[0]
+
+    if not is_valid_space_url(space_url):
+        await update.message.reply_text(
+            "❌ Invalid space URL format. Please provide a valid URL.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Create a default prompt to shorten the summary
+    custom_prompt = "Please summarize the content in a concise manner while keeping it under 4000 characters."
+
+    api_key = os.getenv('SQR_FUND_API_KEY')
+    if not api_key:
+        await update.message.reply_text(
+            "❌ API key not configured. Please contact support.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    processing_msg = await update.message.reply_text(
+        "🔄 Processing your shortening request (this may take up to 60 seconds)...",
+        parse_mode=ParseMode.HTML
+    )
+
+    edit_response = await api_request(
+        'post',
+        "https://spaces.sqrfund.ai/api/summarize-spaces",
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": api_key
+        },
+        json={
+            "spacesUrl": space_url,
+            "customPrompt": sanitize_input(custom_prompt)  # Use the sanitized prompt
+        }
+    )
+
+    # Use the new helper function to process the response
+    await process_summary_api_response(context, update, edit_response, processing_msg)
+
 async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /summarize_space command with improved error handling."""
     try:
@@ -630,149 +770,3 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
         reset_user_data(context)
-
-async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /edit_summary command to allow users to suggest edits."""
-    if not context.args:
-        await update.message.reply_text(
-            "❌ Please provide the content for the summary edit.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    full_prompt = " ".join(context.args)
-    parts = full_prompt.split(" ", 1)
-    if len(parts) < 2:
-        await update.message.reply_text(
-            "❌ Please provide both the space URL and the edit prompt.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    space_url = parts[0]
-    custom_prompt = parts[1]
-    
-    # Validate the length of custom_prompt
-    if len(custom_prompt) > MAX_PROMPT_LENGTH:
-        await update.message.reply_text(
-            f"❌ Your edit prompt is too long. Please limit it to {MAX_PROMPT_LENGTH} characters.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    # Sanitize the custom_prompt to remove potentially harmful content
-    sanitized_prompt = sanitize_input(custom_prompt)
-
-    if not is_valid_space_url(space_url):
-        await update.message.reply_text(
-            "❌ Invalid space URL format. Please provide a valid URL.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    api_key = os.getenv('SQR_FUND_API_KEY')
-    if not api_key:
-        await update.message.reply_text(
-            "❌ API key not configured. Please contact support.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    processing_msg = await update.message.reply_text(
-        "🔄 Processing your edit request (this may take up to 60 seconds)...",
-        parse_mode=ParseMode.HTML
-    )
-
-    edit_response = await api_request(
-        'post',
-        "https://spaces.sqrfund.ai/api/summarize-spaces",
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key
-        },
-        json={
-            "spacesUrl": space_url,
-            "customPrompt": sanitized_prompt  # Use the sanitized prompt
-        }
-    )
-
-    if not edit_response[0]:  # If the request failed
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=processing_msg.message_id,
-            text=f"❌ Failed to edit summary: {edit_response[2]}",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    summary_data = edit_response[1]
-    await context.bot.edit_message_text(
-        chat_id=update.effective_chat.id,
-        message_id=processing_msg.message_id,
-        text=f"✅ Edited Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
-        parse_mode=ParseMode.HTML
-    )
-
-async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /shorten_summary command to allow users to shorten the summary."""
-    if not context.args:
-        await update.message.reply_text(
-            "❌ Please provide the space URL.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    space_url = context.args[0]
-
-    if not is_valid_space_url(space_url):
-        await update.message.reply_text(
-            "❌ Invalid space URL format. Please provide a valid URL.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    # Create a default prompt to shorten the summary
-    custom_prompt = "Please summarize the content in a concise manner while keeping it under 4000 characters."
-
-    api_key = os.getenv('SQR_FUND_API_KEY')
-    if not api_key:
-        await update.message.reply_text(
-            "❌ API key not configured. Please contact support.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    processing_msg = await update.message.reply_text(
-        "🔄 Processing your edit request (this may take up to 60 seconds)...",
-        parse_mode=ParseMode.HTML
-    )
-
-    edit_response = await api_request(
-        'post',
-        "https://spaces.sqrfund.ai/api/summarize-spaces",
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key
-        },
-        json={
-            "spacesUrl": space_url,
-            "customPrompt": sanitize_input(custom_prompt)  # Use the sanitized prompt
-        }
-    )
-
-    if not edit_response[0]:  # If the request failed
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=processing_msg.message_id,
-            text=f"❌ Failed to edit summary: {edit_response[2]}",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    summary_data = edit_response[1]
-    await context.bot.edit_message_text(
-        chat_id=update.effective_chat.id,
-        message_id=processing_msg.message_id,
-        text=f"✅ Edited Summary:\n\n{summary_data.get('summary', 'No summary returned.')}",
-        parse_mode=ParseMode.HTML
-    )

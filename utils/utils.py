@@ -212,15 +212,16 @@ def sanitize_input(input_text: str) -> str:
 
 async def api_request(method: str, url: str, headers: dict = None, json: dict = None) -> Tuple[bool, Optional[dict], Optional[str]]:
     """Reusable function to perform an HTTP request with error handling."""
+    response = None
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             if method.lower() == 'post':
                 response = await client.post(url, headers=headers, json=json)
             elif method.lower() == 'get':
                 response = await client.get(url, headers=headers)
             else:
                 raise ValueError("Unsupported HTTP method")
-            
+
             response.raise_for_status()  # Raise an error for bad responses
             try:
                 data = response.json()
