@@ -51,7 +51,7 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
 
 
         # Remove escape characters for quotes
-        text = text.replace("\\", "")
+        text = text.replace('\\"', '"').replace("\\'", "'")
 
         # Format hyperlinks correctly
         # Convert Markdown links to HTML links: [link text](URL) -> <a href="URL">link text</a>
@@ -280,11 +280,11 @@ def extract_keywords(message):
                    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'shall', 'should', 'may',
                    'might', 'must', 'can', 'could', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my',
                    'your', 'his', 'her', 'its', 'our', 'their', 'this', 'that', 'these', 'those', 'what',
-                   'which', 'who', 'whom', 'whose', 'where', 'when', 'why', 'how', 'in', 'on', 'at', 'by',
+                   'which', 'who', 'whom', 'whose', 'where', 'when', 'why', 'how', 'at', 'by',
                    'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before',
                    'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over',
-+                  'under', 'again', 'further', 'then', 'once', 'here', 'there', 'all', 'any', 'both', 
-+                  'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 
+                   'under', 'again', 'further', 'then', 'once', 'here', 'there', 'all', 'any', 'both', 
+                   'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 
 +                  'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'just', 'don', 'now'}
 
     words = message.lower().split()
@@ -297,10 +297,13 @@ async def retrieve_knowledge(db, keywords):
     if keywords:
         knowledge_text = "\nStored knowledge:\n"
         for keyword in set(keywords):
-            knowledge = db.get_knowledge(keyword)
-            if knowledge:
-                for info in knowledge:
-                    knowledge_text += f"• {info}\n"
+            try:
+                knowledge = db.get_knowledge(keyword)
+                if knowledge:
+                    for info in knowledge:
+                        knowledge_text += f"• {info}\n"
+            except Exception as e:
+                logger.error(f"Error retrieving knowledge for keyword '{keyword}': {str(e)}")
     return knowledge_text
 
 def format_context(context):

@@ -259,7 +259,13 @@ class Database:
             return False
 
     def load_members(self):
-        """Load unique members from the database."""
+        """Load unique members from the database.
+        
+        Returns:
+            list: A list of dictionaries, each containing 'username' and 'user_id' 
+                 for each unique member. Returns an empty list if no data is found
+                 or on error.
+        """
         try:
             members_data = self.get_knowledge("members")
             unique_members = set()  # Use a set to avoid duplicates
@@ -282,7 +288,13 @@ class Database:
             return []  # Fallback to an empty list on error
 
     def load_groups(self):
-        """Load groups from the database."""
+        """Load groups from the database.
+        
+        Returns:
+            list: A list of dictionaries containing group information with 'id', 'title',
+                 'type', and 'added_at' fields. Returns an empty list if validation 
+                 fails or on error.
+        """
         try:
             # Reuse existing validation method
             existing_groups, success = self._get_validated_groups()
