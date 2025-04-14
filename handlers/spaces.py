@@ -640,7 +640,7 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Create a default prompt to shorten the summary
-    custom_prompt = "Please summarize the content in a concise manner while keeping it under 4000 characters."
+    custom_prompt = "Please summarize the content in a concise manner while keeping it under 1000 words."
 
     api_key = os.getenv('SQR_FUND_API_KEY')
     if not api_key:
