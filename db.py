@@ -257,3 +257,58 @@ class Database:
         except Exception as e:
             logger.error(f"Error removing group {chat_id}: {str(e)}") 
             return False
+
+    def load_members(self):
+        """Load unique members from the database.
+        
+        Returns:
+            list: A list of dictionaries, each containing 'username' and 'user_id' 
+                 for each unique member. Returns an empty list if no data is found
+                 or on error.
+        """
+        try:
+            members_data = self.get_knowledge("members")
+            unique_members = set()  # Use a set to avoid duplicates
+            
+            if not members_data or not isinstance(members_data, list):
+                logger.warning("No members data found or data is not in expected format.")
+                return []  # Return an empty list if no valid data
+
+            for member_list in members_data:
+                if not isinstance(member_list, list):
+                    logger.warning(f"Expected a list of members, got {type(member_list)}")
+                    continue
+                for member in member_list:
+                    if not isinstance(member, dict):
+                        logger.warning(f"Expected a member dictionary, got {type(member)}")
+                        continue
+                    
+                    # Add unique members based on username
+                    if member.get('username') and member.get('user_id'):
+                        unique_members.add((member['username'], member['user_id']))
+
+            # Convert the set back to a list of dictionaries
+            return [{'username': username, 'user_id': user_id} for username, user_id in unique_members]
+
+        except Exception as e:
+            logger.error(f"Error loading members: {str(e)}")
+            return []  # Fallback to an empty list on error
+
+    def load_groups(self):
+        """Load groups from the database.
+        
+        Returns:
+            list: A list of dictionaries containing group information with 'id', 'title',
+                 'type', and 'added_at' fields. Returns an empty list if validation 
+                 fails or on error.
+        """
+        try:
+            # Reuse existing validation method
+            existing_groups, success = self._get_validated_groups()
+            if success:
+                return existing_groups
+            return []  # Return an empty list if validation failed
+
+        except Exception as e:
+            logger.error(f"Error loading groups: {str(e)}")
+            return []  # Fallback to an empty list on error

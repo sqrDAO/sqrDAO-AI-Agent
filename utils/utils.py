@@ -37,11 +37,33 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         # Handle inline code
         text = re.sub(r'`(.*?)`', r'<code>\1</code>', text)
         
+        # Handle bullet points
+        text = re.sub(r'^\*\s*(.*)', r'<li>\1</li>', text, flags=re.MULTILINE)
+        # Only wrap <li> elements in <ul> tags if they exist
+        if '<li>' in text:
+            text = re.sub(r'(<li>.*?</li>(\n|$))+', r'<ul>\g<0></ul>', text, flags=re.DOTALL)
+        
         # Define allowed tags for bleach
+        # Ensure 'a' is included for hyperlinks
+        # And that it allows 'href' attribute
         allowed_tags = ['b', 'i', 'u', 'pre', 'code', 'a']
+        allowed_attributes = {'a': ['href']}
+
+
+        # Remove escape characters for quotes
+        text = text.replace('\\"', '"').replace("\\'", "'")
+
+        # Format hyperlinks correctly
+        # Convert Markdown links to HTML links with more robust regex
+        # Handles URLs with special characters and prevents partial matches
+        text = re.sub(
+            r'\[([^\]]+)\]\((https?://[^\s<>()]+(?:\([^\s<>()]*\)|[^\s<>()]*)*)\)',
+            r'<a href="\2">\1</a>',
+            text
+        )
         
         # Sanitize the HTML to remove unsupported tags and fix any issues
-        text = bleach.clean(text, tags=allowed_tags, strip=True)
+        text = bleach.clean(text, tags=allowed_tags, attributes=allowed_attributes, strip=True)
 
         logger.debug(f"Formatted text: {text}")  # Log the formatted text
         return text
@@ -255,3 +277,52 @@ async def process_summary_api_response(context, update, edit_response, processin
         parse_mode=ParseMode.HTML
     )
     return True
+
+
+def extract_keywords(message):
+    """Extract meaningful keywords by removing stop words and short words."""
+    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                   'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'shall', 'should', 'may',
+                   'might', 'must', 'can', 'could', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my',
+                   'your', 'his', 'her', 'its', 'our', 'their', 'this', 'that', 'these', 'those', 'what',
+                   'which', 'who', 'whom', 'whose', 'where', 'when', 'why', 'how', 'at', 'by',
+                   'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before',
+                   'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over',
+                   'under', 'again', 'further', 'then', 'once', 'here', 'there', 'all', 'any', 'both', 
+                   'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 
+                   'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'just', 'don', 'now'}
+
+    words = message.lower().split()
+    # Use set comprehension directly for better performance
+    return {re.sub(r'\W+', '', word) for word in words if len(word) > 2 and word not in stop_words}
+
+async def retrieve_knowledge(db, keywords):
+    """Retrieve knowledge for each keyword and aggregate results."""
+    knowledge_text = ""
+    if keywords:
+        knowledge_text = "\nStored knowledge:\n"
+        for keyword in set(keywords):
+            try:
+                knowledge = db.get_knowledge(keyword)
+                if knowledge:
+                    for info in knowledge:
+                        knowledge_text += f"• {info}\n"
+            except Exception as e:
+                logger.error(f"Error retrieving knowledge for keyword '{keyword}': {str(e)}")
+    return knowledge_text
+
+def format_context(context):
+    """Format the context for the AI model."""
+    context_text = ""
+    if context:
+        context_text = "Previous relevant conversations:\n"
+        for entry in context:
+            if len(entry) >= 2:
+                prev_msg, prev_resp = entry[:2]
+                # Sanitize user input to prevent injection
+                prev_msg = sanitize_input(prev_msg)
+                prev_resp = sanitize_input(prev_resp)
+                context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
+            else:
+                logger.warning(f"Unexpected context format: {entry}")
+    return context_text

@@ -378,8 +378,8 @@ async def periodic_job_check(
                     return
                 
                 # Check for 502 error
-                if "502 Server Error" in result:
-                    logger.error("Received 502 Server Error during summarization")
+                if "502 Bad Gateway" in result:
+                    logger.error("Received 502 Bad Gateway Server Error during summarization")
                     await context.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
@@ -435,7 +435,8 @@ async def periodic_job_check(
         await context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text="❌ Timeout: Could not complete summarization in time.",
+            text="❌ Timeout: Could not complete summarization in time.\n"
+            "For refunds, please contact @DarthCastelian.",
             parse_mode=ParseMode.HTML
         )
         reset_user_data(context)
@@ -640,7 +641,7 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Create a default prompt to shorten the summary
-    custom_prompt = "Please summarize the content in a concise manner while keeping it under 4000 characters."
+    custom_prompt = "Please summarize the content in a concise manner while keeping it under 1000 words."
 
     api_key = os.getenv('SQR_FUND_API_KEY')
     if not api_key:

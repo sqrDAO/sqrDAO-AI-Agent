@@ -39,7 +39,7 @@ from utils.utils import (
     get_webpage_content, escape_markdown_v2,
     get_announcement_prefix, parse_mass_message_input,
     get_error_message, get_success_message,
-    load_authorized_members
+    load_authorized_members, extract_keywords, retrieve_knowledge, format_context
 )
 
 # Import config
@@ -123,7 +123,6 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
 
     except Exception as e:
         logger.debug(f"Error processing private message from {message.from_user.username}: {str(e)}")
-        logger.debug(f"Message content: {message.text}")
         await message.reply_text(
             get_error_message('general_error'),
             parse_mode=ParseMode.HTML
@@ -206,12 +205,22 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
     try:
         # Get relevant context from previous conversations
         context_messages = db.get_relevant_context(message.from_user.id, message.text)
-        
+
+        # Log the context_messages
+        logger.debug(f"context_messages: {context_messages}, type: {type(context_messages)}")
+
         # Prepare context for the model
-        context_text = "\n".join([f"Previous: {msg[0]}\nResponse: {msg[1]}" for msg in context_messages if len(msg) == 2])
-        
+        context_text = " ".join(
+            [f"Previous: {msg[0]} Response: {msg[1]}" for msg in context_messages if len(msg) >= 2 and msg[0] and msg[1]]
+        )
+
+        # Log the context_text
+        logger.debug(f"context_text: {context_text}, type: {type(context_text)}")
+
         # Process message with context
         response = await process_message_with_context(message.text, context_text)
+
+        logger.debug(f"response: {response}, type: {type(response)}")
         
         # Store conversation
         db.store_conversation(
@@ -224,52 +233,47 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         return response
 
     except Exception as e:
+        logger.debug(f"Error in process_message_with_context_and_reply: {str(e)}")
         return get_error_message('processing_error')
 
 async def process_message_with_context(message, context):
-    # Basic stop words to filter out
-    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-                 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'shall', 'should', 'may',
-                 'might', 'must', 'can', 'could', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my',
-                 'your', 'his', 'her', 'its', 'our', 'their', 'this', 'that', 'these', 'those', 'what',
-                 'which', 'who', 'whom', 'whose', 'where', 'when', 'why', 'how', 'in', 'on', 'at', 'by',
-                 'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before',
-                 'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over',
-                 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why',
-                 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
-                 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can',
-                 'will', 'just', 'don', 'should', 'now'}
+    """Process the message with context and prepare the response."""
+    logger.debug(f"Processing message with context: {message}, type: {type(message)}")
 
-    # Extract meaningful keywords by removing stop words and short words
-    words = message.lower().split()
-    keywords = [re.sub(r'\W+', '', word) for word in words if len(word) > 2]  # Strip special characters
-    keywords = [word for word in keywords if word]  # Remove empty strings
+    # Check if message is a valid string
+    if not isinstance(message, str) or not message.strip():
+        logger.error("Invalid message input. Must be a non-empty string.")
+        return "Invalid message input."
 
-    # Get relevant knowledge using multiple significant keywords
-    knowledge_text = ""
-    if keywords:
-        # Retrieve knowledge for each keyword and aggregate results
-        knowledge_text = "\nStored knowledge:\n"
-        for keyword in set(keywords):  # Use a set to avoid duplicate queries
-            knowledge = db.get_knowledge(keyword)
-            if knowledge:
-                for info in knowledge:
-                    knowledge_text += f"• {info}\n"
-
-    # Format context properly
-    context_text = ""
-    if context:
-        context_text = "Previous relevant conversations:\n"
-        for entry in context:
-            if len(entry) >= 2:  # Ensure we have at least message and response
-                prev_msg, prev_resp = entry[:2]  # Take first two elements
-                context_text += f"User: {prev_msg}\nBot: {prev_resp}\n"
-            else:
-                logger.warning(f"Unexpected context format: {entry}")
+    # Step 1: Extract meaningful keywords
+    keywords = extract_keywords(message)
     
-    # Combine context with current message and knowledge
+    logger.debug(f"Keywords: {keywords}, type: {type(keywords)}")
+    
+    # Step 2: Retrieve relevant knowledge
+    knowledge_text = await retrieve_knowledge(db, keywords)
+    
+    # Log the types of knowledge_text and message
+    logger.debug(f"knowledge_text: {knowledge_text}, type: {type(knowledge_text)}")
+    logger.debug(f"message: {message}, type: {type(message)}")
+
+    # Ensure knowledge_text is a string
+    if not isinstance(knowledge_text, str):
+        logger.error(f"Expected knowledge_text to be a string, got {type(knowledge_text)}")
+        knowledge_text = str(knowledge_text)  # Convert to string if necessary
+
+    # Step 3: Format context
+    context_text = format_context(context)
+    
+    # Log the type of context_text
+    logger.debug(f"context_text: {context_text}, type: {type(context_text)}")
+
+    # Step 4: Combine context with current message and knowledge
     prompt = f"{context_text}\n{knowledge_text}\nCurrent message: {message}\n\nPlease provide a response that takes into account both the context of previous conversations and the stored knowledge if relevant."
     
+    # Log the prompt
+    logger.debug(f"prompt: {prompt}, type: {type(prompt)}")
+
     try:
         # Generate response using Gemini
         response = model.generate_content(prompt)
@@ -320,58 +324,15 @@ def main():
         # Create application
         application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-        # Initialize bot data
+        # Initialize database
         application.bot_data['db'] = Database()  # Initialize database
         application.bot_data['authorized_members'] = load_authorized_members(application.bot_data['db'])  # Load authorized members
 
         # Load initial data from database
-        try:
-            # Load members from database
-            members_data = application.bot_data['db'].get_knowledge("members")
-            
-            unique_members = set()  # Use a set to avoid duplicates
-            for member_list in members_data:
-                for member in member_list:
-                    # Add unique members based on username
-                    if member['username'] and member['user_id']:
-                        unique_members.add((member['username'], member['user_id']))
-
-            # Convert the set back to a list of dictionaries
-            application.bot_data['members'] = [{'username': username, 'user_id': user_id} for username, user_id in unique_members]
-
-            if not application.bot_data['members']:  # Check if we have any data
-                application.bot_data['members'] = []
-
-            # Load groups from database
-            groups_data = application.bot_data['db'].get_knowledge("groups")
-
-            # Check if groups_data is empty or not in expected format
-            if not groups_data or not isinstance(groups_data, list):
-                logger.warning("No groups data found or data is not in expected format.")
-                application.bot_data['group_members'] = []
-                return
-
-            try:
-                # Get the last element which contains the most recent group data
-                last_element = groups_data[-1]
-                logger.debug(f"Last element: {last_element}")
-                logger.debug(f"Type of last element: {type(last_element)}")
-                
-                if isinstance(last_element, list):
-                    # The last element is already our list of groups
-                    application.bot_data['group_members'] = last_element
-                    logger.debug(f"Group members: {application.bot_data['group_members']}")
-                else:
-                    logger.warning("Last element is not a list.")
-                    application.bot_data['group_members'] = []
-            except Exception as e:
-                logger.error(f"Error processing groups data: {str(e)}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                application.bot_data['group_members'] = []
-        except Exception as e:
-            logger.error(f"Error loading groups data: {str(e)}")
-            application.bot_data['members'] = []  # Fallback to empty list
-            application.bot_data['group_members'] = []  # Fallback to empty list
+        application.bot_data['members'] = application.bot_data['db'].load_members()
+        logger.debug(f"Loaded members: {application.bot_data['members']}")
+        application.bot_data['group_members'] = application.bot_data['db'].load_groups()
+        logger.debug(f"Loaded groups: {application.bot_data['group_members']}")
 
         # Add command handlers
         application.add_handler(CommandHandler("start", start))
