@@ -43,6 +43,9 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         # Sanitize the HTML to remove unsupported tags and fix any issues
         text = bleach.clean(text, tags=allowed_tags, strip=True)
 
+        # Remove escape characters for quotes
+        text = text.replace("\\", "")
+
         logger.debug(f"Formatted text: {text}")  # Log the formatted text
         return text
     return text  # Return unmodified text if parse mode is not recognized
