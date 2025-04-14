@@ -370,7 +370,7 @@ async def periodic_job_check(
                                 message_id=message_id,
                                 text=f"✅ Summary completed!\n\n{summary_text}\n\n"
                                      "If you would like a shorter version, please use /shorten_summary.\n\n"
-                                     "AlternativelyIf you would like to make suggestions or edits, use the command /edit_summary.",
+                                     "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary.",
                                 parse_mode=ParseMode.HTML
                             )
                     
