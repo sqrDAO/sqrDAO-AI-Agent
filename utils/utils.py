@@ -37,6 +37,10 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         # Handle inline code
         text = re.sub(r'`(.*?)`', r'<code>\1</code>', text)
         
+        # Handle bullet points
+        text = re.sub(r'^\*\s*(.*)', r'<li>\1</li>', text, flags=re.MULTILINE)
+        text = f"<ul>{text}</ul>"  # Wrap bullet points in <ul> tags
+        
         # Define allowed tags for bleach
         # Ensure 'a' is included for hyperlinks
         # And that it allows 'href' attribute
