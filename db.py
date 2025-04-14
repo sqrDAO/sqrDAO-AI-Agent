@@ -284,27 +284,11 @@ class Database:
     def load_groups(self):
         """Load groups from the database."""
         try:
-            groups_data = self.get_knowledge("groups")
-
-            if not groups_data or not isinstance(groups_data, list):
-                logger.warning("No groups data found or data is not in expected format.")
-                return []  # Return an empty list if no valid data
-            
-            if len(groups_data) == 0:
-                logger.warning("Groups data is an empty list.")
-                return []
-
-            # Get the last element which contains the most recent group data
-            last_element = groups_data[-1]
-            logger.debug(f"Last element: {last_element}")
-            logger.debug(f"Type of last element: {type(last_element)}")
-
-            if isinstance(last_element, list):
-                # The last element is already our list of groups
-                return last_element
-            else:
-                logger.warning("Last element is not a list.")
-                return []  # Return an empty list if the last element is not a list
+            # Reuse existing validation method
+            existing_groups, success = self._get_validated_groups()
+            if success:
+                return existing_groups
+            return []  # Return an empty list if validation failed
 
         except Exception as e:
             logger.error(f"Error loading groups: {str(e)}")
