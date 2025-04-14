@@ -435,7 +435,8 @@ async def periodic_job_check(
         await context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text="❌ Timeout: Could not complete summarization in time.",
+            text="❌ Timeout: Could not complete summarization in time.\n"
+            "For refunds, please contact @DarthCastelian.",
             parse_mode=ParseMode.HTML
         )
         reset_user_data(context)
