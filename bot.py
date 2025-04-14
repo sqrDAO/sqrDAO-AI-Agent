@@ -284,7 +284,7 @@ async def process_message_with_context(message, context):
         return response.text
         
     except Exception as e:
-        logger.error(f"Error in process_message_with_context: {str(e)}")
+        logger.error(f"Error processing message with context: {str(e)}")
         return "I encountered an error while processing your message. Please try again."
 
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
