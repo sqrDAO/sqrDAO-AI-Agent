@@ -39,12 +39,16 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         
         # Handle bullet points
         text = re.sub(r'^\*\s*(.*)', r'<li>\1</li>', text, flags=re.MULTILINE)
-        text = f"<ul>{text}</ul>"  # Wrap bullet points in <ul> tags
+        # Only wrap <li> elements in <ul> tags if they exist
+        if '<li>' in text:
+            text = re.sub(r'(<li>.*?</li>(\n|$))+', r'<ul>\g<0></ul>', text, flags=re.DOTALL)
         
         # Define allowed tags for bleach
         # Ensure 'a' is included for hyperlinks
         # And that it allows 'href' attribute
         allowed_tags = ['b', 'i', 'u', 'pre', 'code', 'a']
+        allowed_attributes = {'a': ['href']}
+
 
         # Remove escape characters for quotes
         text = text.replace("\\", "")
@@ -54,7 +58,7 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         text = re.sub(r'\[([^\]]+)\]\((https?://\S+)\)', r'<a href="\2">\1</a>', text)
         
         # Sanitize the HTML to remove unsupported tags and fix any issues
-        text = bleach.clean(text, tags=allowed_tags, strip=True)
+        text = bleach.clean(text, tags=allowed_tags, attributes=allowed_attributes, strip=True)
 
         logger.debug(f"Formatted text: {text}")  # Log the formatted text
         return text
@@ -279,10 +283,9 @@ def extract_keywords(message):
                    'which', 'who', 'whom', 'whose', 'where', 'when', 'why', 'how', 'in', 'on', 'at', 'by',
                    'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before',
                    'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over',
-                   'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why',
-                   'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
-                   'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can',
-                   'will', 'just', 'don', 'should', 'now'}
++                  'under', 'again', 'further', 'then', 'once', 'here', 'there', 'all', 'any', 'both', 
++                  'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 
++                  'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'just', 'don', 'now'}
 
     words = message.lower().split()
     keywords = [re.sub(r'\W+', '', word) for word in words if len(word) > 2 and word not in stop_words]
