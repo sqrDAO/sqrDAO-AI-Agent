@@ -14,7 +14,7 @@ from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Commitment
 from solders.signature import Signature
 from handlers.general import find_member_by_username  # Ensure this import is at the top of your file
-from utils.retry import with_retry, TransientError, PermanentError
+from utils.retry import with_retry, TransientError, PermanentError, TransactionError
 from utils.utils import is_valid_space_url, sanitize_input, api_request, process_summary_api_response
 from config import (
     TEXT_SUMMARY_COST,
@@ -70,7 +70,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             signature_obj = Signature.from_string(signature)
         except Exception as e:
             logger.error(f"Error converting signature format: {str(e)}")
-            return False, f"❌ Error converting signature format: {str(e)}"
+            raise TransactionError("Error converting signature format", "SIGNATURE_CONVERSION_ERROR")
 
         # Get transaction details
         tx = await client.get_transaction(
@@ -79,24 +79,22 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         )
 
         if not tx or not tx.value:
-            return False, "Could not get transaction details"
+            raise TransactionError("Could not get transaction details", "TX_NOT_FOUND")
         
         transaction_data = tx.value.transaction
         meta = transaction_data.meta
         
         # Check if transaction was successful
         if not meta:
-            logger.error("No meta data found in transaction")
-            return False, "❌ No meta data found in transaction"
+            raise TransactionError("No meta data found in transaction", "META_NOT_FOUND")
             
         if meta.err:
-            logger.error(f"Transaction failed with error: {meta.err}")
-            return False, f"❌ Transaction failed: {meta.err}"
+            raise TransactionError(f"Transaction failed: {meta.err}", "TRANSACTION_FAILED")
             
         # Get block time from transaction
         if not tx.value.block_time:
             logger.error("No block time found in transaction")
-            return False, "❌ No block time found in transaction"
+            raise TransactionError("No block time found in transaction", "BLOCK_TIME_NOT_FOUND")
 
         # Convert block time to datetime
         transaction_time = datetime.fromtimestamp(tx.value.block_time)
@@ -106,11 +104,11 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
 
         if time_diff < timedelta(0):
             logger.warning("Transaction was completed before command was issued")
-            return False, "Transaction was completed before the command was issued"
+            raise TransactionError("Transaction was completed before the command was issued", "TRANSACTION_COMPLETED_BEFORE_COMMAND")
         elif time_diff > timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES):
             minutes_late = int((time_diff - timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES)).total_seconds() / 60)
             logger.warning(f"Transaction was completed {minutes_late} minutes after deadline")
-            return False, f"Transaction was completed {minutes_late} minutes after the {TRANSACTION_TIMEOUT_MINUTES}-minute window expired"
+            raise TransactionError(f"Transaction was completed {minutes_late} minutes after the {TRANSACTION_TIMEOUT_MINUTES}-minute window expired", "TRANSACTION_COMPLETED_AFTER_DEADLINE")
             
         # Check token amount using pre and post token balances
         try:
@@ -119,7 +117,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             
             if not pre_balances or not post_balances:
                 logger.error("No token balance information found in transaction")
-                return False, "❌ No token balance information found in transaction"
+                raise TransactionError("No token balance information found in transaction", "TOKEN_BALANCE_NOT_FOUND")
             
             # Find the token transfer amount by comparing pre and post balances
             transfer_amount = 0
@@ -142,19 +140,20 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
             required_amount = AUDIO_SUMMARY_COST if request_type == 'audio' else TEXT_SUMMARY_COST
             
             if transfer_amount <= 0:
-                logger.warning(f"Invalid transfer amount: {transfer_amount}")
-                return False, f"❌ No valid token transfer found or insufficient amount: {transfer_amount} (minimum required: {required_amount})"
+                raise TransactionError(f"No valid token transfer found or insufficient amount: {transfer_amount}", "INVALID_TRANSFER")
                 
             if transfer_amount < required_amount:
-                logger.warning(f"Insufficient transfer amount: {transfer_amount}")
-                return False, f"❌ Insufficient token amount: {transfer_amount} (minimum required: {required_amount})"
+                raise TransactionError(f"Insufficient token amount: {transfer_amount}", "INSUFFICIENT_AMOUNT")
                 
         except Exception as e:
             logger.error(f"Error checking token amount: {str(e)}")
-            return False, "❌ Error verifying token amount in transaction"
+            raise TransactionError("Error verifying token amount in transaction", "TOKEN_AMOUNT_VERIFICATION_ERROR")
             
         return True, "Transaction confirmed"
 
+    except TransactionError as e:
+        logger.error(f"Transaction error: {str(e)} (Code: {e.error_code})")
+        return False, f"❌ {str(e)}"
     except Exception as e:
         logger.error(f"Error checking transaction: {str(e)}")
         return False, f"Error checking transaction: {str(e)}"
@@ -508,6 +507,8 @@ async def handle_failed_transaction(
             "❌ Transaction verification failed. Please try again.",
             parse_mode=ParseMode.HTML
         )
+    except TransactionError as e:
+        logger.error(f"Transaction error in handle_failed_transaction: {str(e)} (Code: {e.error_code})")
     except Exception as e:
         logger.error(f"Error in handle_failed_transaction: {str(e)}")
     finally:
@@ -672,6 +673,10 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Use the new helper function to process the response
     await process_summary_api_response(context, update, edit_response, processing_msg)
 
+def validate_request_type(request_type: str) -> bool:
+    """Validate the request type is either 'text' or 'audio'."""
+    return request_type.lower() in ('text', 'audio')
+
 async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /summarize_space command with improved error handling."""
     try:
@@ -704,7 +709,13 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Determine request type (text or audio)
         if len(context.args) > 1:
-            request_type = 'audio' if context.args[1].lower() == 'audio' else 'text'
+            request_type = context.args[1].lower()
+            if not validate_request_type(request_type):
+                await update.message.reply_text(
+                    "❌ Invalid request type. Please specify either 'text' or 'audio'.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
         else:
             request_type = 'text'  # Default to text if not specified
 

@@ -81,6 +81,16 @@ def with_retry(
         return wrapper
     return decorator
 
+class SummaryError(Exception):
+    """Base class for summary-related errors."""
+    def __init__(self, message: str, error_code: str):
+        self.error_code = error_code
+        super().__init__(message)
+
+class TransactionError(SummaryError):
+    """Raised when transaction verification fails."""
+    pass
+
 class RetryableError(Exception):
     """Base class for retryable errors."""
     pass
