@@ -382,7 +382,8 @@ async def periodic_job_check(
                     await context.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text="❌ The summarization service is temporarily unavailable. Please try again later.",
+                        text="❌ The summarization service is temporarily unavailable. Please try again later.\n"
+                             "For refund, please contact @DarthCastelian.",   
                         parse_mode=ParseMode.HTML
                     )
                     return  # Exit the function after sending the message
