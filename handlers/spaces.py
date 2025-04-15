@@ -15,7 +15,7 @@ from solana.rpc.commitment import Commitment
 from solders.signature import Signature
 from handlers.general import find_member_by_username  # Ensure this import is at the top of your file
 from utils.retry import with_retry, TransientError, PermanentError, TransactionError
-from utils.utils import is_valid_space_url, sanitize_input, api_request, process_summary_api_response
+from utils.utils import is_valid_space_url, sanitize_input, process_summary_api_response, api_request
 from config import (
     TEXT_SUMMARY_COST,
     AUDIO_SUMMARY_COST,
@@ -458,7 +458,7 @@ async def handle_successful_transaction(
         if not api_key:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
             raise PermanentError("API key not configured") from None
-
+        
         download_response = await api_request(
             'post',
             "https://spaces.sqrfund.ai/api/async/download-spaces",
@@ -471,15 +471,22 @@ async def handle_successful_transaction(
             }
         )
 
+        logger.debug(f"Download response received: {download_response}")
+
         if not download_response[0]:  # If the request failed
+            logger.error(f"Failed to initiate space download: {download_response[2]}")
             raise PermanentError(f"Failed to initiate space download: {download_response[2]}") from None
 
         job_data = download_response[1]
         job_id = job_data.get('jobId')
+        logger.debug(f"Job ID received: {job_id}")
+
         if not job_id:
+            logger.error("No job ID received from download request")
             raise PermanentError("No job ID received from download request") from None
 
         # Start the periodic job check
+        logger.debug(f"Starting periodic job check for job ID: {job_id}")
         asyncio.create_task(
             periodic_job_check(
                 context, job_id, space_url,
