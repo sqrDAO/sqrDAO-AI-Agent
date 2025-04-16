@@ -304,6 +304,7 @@ async def periodic_job_check(
                         # Handle the summary text
                         summary_text = result  # Use the single result if not a list
 
+                        logger.debug(f"Summary text received: {summary_text[:50]}...")  # Log the first 50 characters
                         # Check if the summary exceeds 4096 characters
                         if len(summary_text) > 4096:
                             # Split summary at sentence or paragraph boundaries when possible
@@ -690,13 +691,6 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Check if the user is a member using find_member_by_username
         username = update.effective_user.username
-        
-        if not find_member_by_username(username, context):
-            await update.message.reply_text(
-                "❌ You do not have permission to use this command. Please contact an admin for access.",
-                parse_mode=ParseMode.HTML
-            )
-            return
         
         if not context.args:
             await update.message.reply_text(
