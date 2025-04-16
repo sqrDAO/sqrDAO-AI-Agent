@@ -689,9 +689,6 @@ def validate_request_type(request_type: str) -> bool:
 async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /summarize_space command with improved error handling."""
     try:
-        # Check if the user is a member using find_member_by_username
-        username = update.effective_user.username
-        
         if not context.args:
             await update.message.reply_text(
                 "Please provide the X Space URL and the request type (text or audio) after the command.\n\n"
