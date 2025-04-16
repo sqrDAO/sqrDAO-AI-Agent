@@ -82,22 +82,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning("Received an empty message.")
             return
 
-        # Check if we're waiting for a transaction signature
-        if context.user_data.get('awaiting_signature'):
-            logger.debug("Awaiting signature, processing signature.")
-            await process_signature(message.text, context, message)
-            return
-
         # If we're in the middle of a space summarization process, ignore other messages
         if context.user_data.get('space_url') and not context.user_data.get('awaiting_signature'):
             logger.debug("Ignoring message during space summarization process.")
             return
-        
-        # Process the message based on chat type
-        if message.chat.type == 'private':
+
+        # Check if we're in a group chat
+        if update.message.chat.type in ['group', 'supergroup']:
+            # If awaiting signature, silently ignore the message in groups
+            if context.user_data.get('awaiting_signature'):
+                return
+            # Otherwise process group message normally
+            await handle_group_message(update.message, context)
+        elif update.message.chat.type == 'private':
+            # If awaiting signature, silently ignore the message in private chats
+            if context.user_data.get('awaiting_signature'):
+                await process_signature(update.message.text, context, update.message)
+                return
+            # Otherwise process private message normally
             await handle_private_message(message, context)
-        elif message.chat.type in ['group', 'supergroup']:  # Added group and supergroup check
-            await handle_group_message(message, context)
         else:
             logger.warning(f"Unhandled chat type: {message.chat.type}")
 
@@ -348,12 +351,12 @@ def main():
         application.add_handler(CommandHandler("learn_from_url", learn_from_url))
         application.add_handler(CommandHandler("balance", check_balance))
         application.add_handler(CommandHandler("sqr_info", sqr_info))
-        application.add_handler(CommandHandler("summarize_space", summarize_space))
-        application.add_handler(CommandHandler("list_members", list_members))
-        application.add_handler(CommandHandler("approve_member", approve_member))
-        application.add_handler(CommandHandler("reject_member", reject_member))
-        application.add_handler(CommandHandler("list_requests", list_requests))
-        application.add_handler(CommandHandler("list_groups", list_groups))
+        application.add_handler(CommandHandler("summarize_space", summarize_space, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("list_members", list_members, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("approve_member", approve_member, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("reject_member", reject_member, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("list_requests", list_requests, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("list_groups", list_groups, filters.ChatType.PRIVATE))
         application.add_handler(CommandHandler("mass_message", mass_message))
         application.add_handler(CommandHandler("cancel", cancel_command))
         application.add_handler(CommandHandler("edit_summary", edit_summary))
