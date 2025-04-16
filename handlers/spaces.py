@@ -68,9 +68,9 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
         # Convert signature string to Signature object
         try:
             signature_obj = Signature.from_string(signature)
-        except Exception as e:
+        except Exception as original_exception:
             logger.error(f"Error converting signature format: {str(e)}")
-            raise TransactionError("Error converting signature format", "SIGNATURE_CONVERSION_ERROR")
+            raise TransactionError("Error converting signature format", "SIGNATURE_CONVERSION_ERROR") from original_exception
 
         # Get transaction details
         tx = await client.get_transaction(
