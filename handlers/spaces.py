@@ -147,7 +147,7 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
                 
         except Exception as e:
             logger.error(f"Error checking token amount: {str(e)}")
-            raise TransactionError("Error verifying token amount in transaction", "TOKEN_AMOUNT_VERIFICATION_ERROR")
+            raise TransactionError("Error verifying token amount in transaction", "TOKEN_AMOUNT_VERIFICATION_ERROR") from e
             
         return True, "Transaction confirmed"
 
