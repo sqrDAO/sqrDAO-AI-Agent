@@ -253,69 +253,6 @@ async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Option
 # Create a dictionary to hold locks for each job ID
 job_locks = {}
 
-async def check_download_status(job_id: str, api_key: str) -> Tuple[bool, str]:
-    """Check the status of a space download job."""
-    try:
-        success, data, error = await get_job_status(job_id, api_key)
-        
-        if not success:
-            logger.error(f"Download job status check failed: {error}")
-            raise PermanentError("Download job status check failed") from None
-
-        job_status = data.get('job', {}).get('status')
-        if job_status is None:
-            logger.error("Response does not contain 'job' or 'status' key")
-            raise PermanentError("Invalid response format: 'job' or 'status' key missing")
-
-        if job_status == 'completed':
-            return True, "Download completed"
-        elif job_status == 'failed':
-            error_msg = data.get('job', {}).get('error', 'Unknown error')
-            logger.error(f"Download job failed: {error_msg}")
-            raise PermanentError(f"Download job failed: {error_msg}")
-        else:
-            logger.warning(f"Download job status is still processing: {job_status}")
-            raise TransientError("Download job still processing")
-            
-    except httpx.HTTPError as e:
-        logger.error(f"HTTP error while checking download status: {str(e)}")
-        raise TransientError(f"Failed to check download status: {str(e)}") from e
-    except Exception as e:
-        logger.error(f"Unexpected error in check_download_status: {str(e)}")
-        raise TransientError(f"Unexpected error: {str(e)}") from e
-
-async def check_summarization_status(job_id: str, api_key: str) -> Tuple[bool, str]:
-    """Check the status of a space summarization job."""
-    try:
-        success, data, error = await get_job_status(job_id, api_key)
-        
-        if not success:
-            logger.error(f"Summarization job status check failed: {error}")
-            raise PermanentError("Summarization job status check failed") from None
-
-        job_status = data.get('job', {}).get('status')
-        if job_status is None:
-            logger.error("Response does not contain 'job' or 'status' key")
-            raise PermanentError("Invalid response format: 'job' or 'status' key missing")
-
-        if job_status == 'completed':
-            summary_text = data.get('summary', '✅ Space summarized successfully!')
-            return True, summary_text
-        elif job_status == 'failed':
-            error_msg = data.get('job', {}).get('error', 'Unknown error')
-            logger.error(f"Summarization job failed: {error_msg}")
-            raise PermanentError(f"Summarization job failed: {error_msg}")
-        else:
-            logger.warning(f"Summarization job status is still processing: {job_status}")
-            raise TransientError("Summarization job still processing")
-            
-    except httpx.HTTPError as e:
-        logger.error(f"HTTP error while checking summarization status: {str(e)}")
-        raise TransientError(f"Failed to check summarization status: {str(e)}") from e
-    except Exception as e:
-        logger.error(f"Unexpected error in check_summarization_status: {str(e)}")
-        raise TransientError(f"Unexpected error: {str(e)}") from e
-
 async def periodic_download_check(
     context: ContextTypes.DEFAULT_TYPE,
     job_id: str,
@@ -329,6 +266,17 @@ async def periodic_download_check(
     """Periodically check the status of a space download job."""
     if job_id not in job_locks:
         job_locks[job_id] = asyncio.Lock()
+
+    if not api_key:
+        logger.error("API key not configured")
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text="❌ Error: API key not configured",
+            parse_mode=ParseMode.HTML
+        )
+        reset_user_data(context)
+        return
     
     async with job_locks[job_id]:
         # start_time = datetime.now()
@@ -336,9 +284,6 @@ async def periodic_download_check(
         
         while attempts < max_attempts:
             try:
-                if not api_key:
-                    raise PermanentError("API key not configured") from None
-
                 success, result = await check_job_status(job_id, api_key, 'download')
                 
                 if success:
