@@ -256,6 +256,20 @@ async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Option
 # Create a dictionary to hold locks for each job ID
 job_locks = {}
 
+async def verify_api_key(context, chat_id, message_id):
+    """Verify API key is configured and notify user if not."""
+    if not api_key:
+        logger.error("API key not configured")
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text="❌ Error: API key not configured",
+            parse_mode=ParseMode.HTML
+        )
+        reset_user_data(context)
+        return False
+    return True
+
 async def periodic_download_check(
     context: ContextTypes.DEFAULT_TYPE,
     job_id: str,
@@ -270,15 +284,7 @@ async def periodic_download_check(
     if job_id not in job_locks:
         job_locks[job_id] = asyncio.Lock()
 
-    if not api_key:
-        logger.error("API key not configured")
-        await context.bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text="❌ Error: API key not configured",
-            parse_mode=ParseMode.HTML
-        )
-        reset_user_data(context)
+    if not await verify_api_key(context, chat_id, message_id):
         return
     
     async with job_locks[job_id]:
@@ -375,15 +381,7 @@ async def periodic_summarization_check(
     if job_id not in job_locks:
         job_locks[job_id] = asyncio.Lock()
 
-    if not api_key:
-        logger.error("API key not configured")
-        await context.bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text="❌ Error: API key not configured",
-            parse_mode=ParseMode.HTML
-        )
-        reset_user_data(context)
+    if not await verify_api_key(context, chat_id, message_id):
         return
     
     async with job_locks[job_id]:
@@ -450,7 +448,7 @@ async def periodic_summarization_check(
                                 prefix = f"✅ Summary completed (part {count}/{len(parts)}):\n\n"
                                 await context.bot.send_message(
                                     chat_id=chat_id,
-                                    text=f"{prefix}{part}\n\n",
+                                    text=f"{prefix}{html.escape(part, quote=False)}\n\n",
                                     parse_mode=ParseMode.HTML
                                 )
                             
