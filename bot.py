@@ -95,7 +95,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Otherwise process group message normally
             await handle_group_message(update.message, context)
         elif update.message.chat.type == 'private':
-            # If awaiting signature, silently ignore the message in private chats
+            # If awaiting signature, , process the transaction signature in private chats
             if context.user_data.get('awaiting_signature'):
                 await process_signature(update.message.text, context, update.message)
                 return
@@ -359,8 +359,8 @@ def main():
         application.add_handler(CommandHandler("list_groups", list_groups, filters.ChatType.PRIVATE))
         application.add_handler(CommandHandler("mass_message", mass_message))
         application.add_handler(CommandHandler("cancel", cancel_command))
-        application.add_handler(CommandHandler("edit_summary", edit_summary))
-        application.add_handler(CommandHandler("shorten_summary", shorten_summary))
+        application.add_handler(CommandHandler("edit_summary", edit_summary, filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("shorten_summary", shorten_summary, filters.ChatType.PRIVATE))
         # Add message handler
         application.add_handler(MessageHandler(filters.TEXT, handle_message))  # Removed command filter
 
