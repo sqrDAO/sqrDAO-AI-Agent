@@ -31,6 +31,9 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# Load environment variables
+api_key = os.getenv('SQR_FUND_API_KEY')
+
 class SpaceSummarizationError(Exception):
     """Base class for space summarization errors."""
     pass
@@ -333,7 +336,6 @@ async def periodic_download_check(
         
         while attempts < max_attempts:
             try:
-                api_key = os.getenv('SQR_FUND_API_KEY')
                 if not api_key:
                     raise PermanentError("API key not configured") from None
 
@@ -428,7 +430,6 @@ async def periodic_summarization_check(
         
         while attempts < max_attempts:
             try:
-                api_key = os.getenv('SQR_FUND_API_KEY')
                 if not api_key:
                     raise PermanentError("API key not configured") from None
 
@@ -575,7 +576,6 @@ async def handle_successful_transaction(
             parse_mode=ParseMode.HTML
         )
 
-        api_key = os.getenv('SQR_FUND_API_KEY')
         if not api_key:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
             raise PermanentError("API key not configured") from None
@@ -732,7 +732,6 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    api_key = os.getenv('SQR_FUND_API_KEY')
     if not api_key:
         logger.error("API key not configured")
         await update.message.reply_text(
@@ -779,7 +778,6 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     custom_prompt = "Please summarize the content in a concise manner while keeping it under 1000 words."
     logger.debug(f"Custom prompt for shortening: {custom_prompt}")
 
-    api_key = os.getenv('SQR_FUND_API_KEY')
     if not api_key:
         logger.error("API key not configured")
         await update.message.reply_text(
