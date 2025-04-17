@@ -8,6 +8,7 @@ import asyncio
 import httpx
 import os
 import uuid
+import html
 import tempfile  # Import tempfile module
 from gtts import gTTS
 from solana.rpc.async_api import AsyncClient
@@ -357,6 +358,9 @@ async def periodic_download_check(
         )
         reset_user_data(context)
 
+    # Remove the lock after the job is done or failed permanently
+    job_locks.pop(job_id, None)
+
 async def periodic_summarization_check(
     context: ContextTypes.DEFAULT_TYPE,
     job_id: str,
@@ -383,7 +387,6 @@ async def periodic_summarization_check(
         return
     
     async with job_locks[job_id]:
-        # start_time = datetime.now()
         attempts = 0
         
         while attempts < max_attempts:
@@ -416,15 +419,18 @@ async def periodic_summarization_check(
                             )
                     else:
                         # Handle the summary text
-                        summary_text = result
+                        summary_text = html.escape(result, quote=False)  # Preserve quotes for readability
 
                         logger.debug(f"Summary text received: {summary_text[:50]}...")
                         if len(summary_text) > 4096:
                             # Split summary at sentence or paragraph boundaries
                             parts = []
                             remaining = summary_text
-                            max_length = 4096
-                            while len(remaining) > max_length:
+                            count = 1
+                            total_parts = (len(summary_text) // 4096) + 1
+                            while remaining:
+                                prefix = f"✅ Summary completed (part {count}/{total_parts}):\n\n"
+                                max_length = 4096 - len(prefix)
                                 split_point = remaining[:max_length].rfind('\n\n')
                                 if split_point < max_length // 2:
                                     split_point = remaining[:max_length].rfind('. ')
@@ -435,17 +441,16 @@ async def periodic_summarization_check(
 
                                 parts.append(remaining[:split_point+1])
                                 remaining = remaining[split_point+1:]
-
-                            if remaining:
-                                parts.append(remaining)
+                                count += 1
 
                             logger.debug(f"Split summary into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
 
                             # Send each part as a new message
                             for count, part in enumerate(parts, 1):
+                                prefix = f"✅ Summary completed (part {count}/{len(parts)}):\n\n"
                                 await context.bot.send_message(
                                     chat_id=chat_id,
-                                    text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",
+                                    text=f"{prefix}{part}\n\n",
                                     parse_mode=ParseMode.HTML
                                 )
                             
@@ -516,6 +521,9 @@ async def periodic_summarization_check(
             parse_mode=ParseMode.HTML
         )
         reset_user_data(context)
+
+    # Remove the lock after the job is done or failed permanently
+    job_locks.pop(job_id, None)
 
 async def handle_successful_transaction(
     context: ContextTypes.DEFAULT_TYPE,
