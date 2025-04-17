@@ -193,8 +193,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
             
             # Add a 2-minute buffer before making the API request
-            logger.info("Waiting for 2 minutes before summarizing the space...")
-            await asyncio.sleep(120)  # Wait for 120 seconds (2 minutes)
+            logger.info("Waiting for 1 minute before summarizing the space...")
+            await asyncio.sleep(60)  # Wait for 60 seconds (1 minute)
 
             summary_response = await api_request(
                 'post',
