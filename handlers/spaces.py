@@ -8,6 +8,7 @@ import asyncio
 import httpx
 import os
 import uuid
+import html
 import tempfile  # Import tempfile module
 from gtts import gTTS
 from solana.rpc.async_api import AsyncClient
@@ -30,6 +31,11 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Load environment variables
+api_key = os.getenv('SQR_FUND_API_KEY')
+if not api_key:
+    logger.warning("SQR_FUND_API_KEY environment variable not set. Space summarization functionality will be unavailable.")
 
 class SpaceSummarizationError(Exception):
     """Base class for space summarization errors."""
@@ -160,78 +166,70 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
     finally:
         await client.close()
 
-@with_retry(max_attempts=3)
-async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
-    """Check the status of a summarization job with retry logic."""
-    try:
-        api_key = os.getenv('SQR_FUND_API_KEY')
-        if not api_key:
-            logger.error("SQR_FUND_API_KEY not found in environment variables")
-            raise PermanentError("API key not configured") from None
-        logger.debug("API key is present.")
+async def get_job_status(job_id: str, api_key: str) -> Tuple[bool, dict, Optional[str]]:
+    """Get the status of a job from the API."""
+    return await api_request(
+        'get',
+        f"https://spaces.sqrfund.ai/api/jobs/{job_id}",
+        headers={"X-API-Key": api_key}
+    )
 
-        logger.debug(f"Checking job status for job ID: {job_id}")
-        success, data, error = await api_request(
-            'get',
-            f"https://spaces.sqrfund.ai/api/jobs/{job_id}",
-            headers={"X-API-Key": api_key}
-        )
+async def summarize_space_api(space_url: str, api_key: str, custom_prompt: Optional[str] = None) -> Tuple[bool, dict, Optional[str]]:
+    """Make a request to summarize a space."""
+    json_data = {
+        "spacesUrl": space_url,
+        "promptType": "formatted"
+    }
+    
+    if custom_prompt:
+        json_data["customPrompt"] = custom_prompt
+
+    return await api_request(
+        'post',
+        "https://spaces.sqrfund.ai/api/async/summarize-spaces",
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": api_key
+        },
+        json=json_data
+    )
+
+async def check_job_status(job_id: str, api_key: str, job_type: str = 'download') -> Tuple[bool, str]:
+    """Check the status of a job (download or summarization)."""
+    try:
+        success, data, error = await get_job_status(job_id, api_key)
         
         if not success:
-            logger.error(f"Job status check failed: {error}")
-            logger.error(f"Response data: {data}")  # Log the response data for more context
-            raise PermanentError("Job status check failed") from None
+            logger.error(f"{job_type.capitalize()} job status check failed: {error}")
+            raise PermanentError(f"{job_type.capitalize()} job status check failed") from None
 
-        # Access the job status from params
         job_status = data.get('job', {}).get('status')
         if job_status is None:
             logger.error("Response does not contain 'job' or 'status' key")
             raise PermanentError("Invalid response format: 'job' or 'status' key missing")
 
         if job_status == 'completed':
-            # Proceed with summarization
-            summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
-            
-            # Add a 2-minute buffer before making the API request
-            logger.info("Waiting for 1 minute before summarizing the space...")
-            await asyncio.sleep(60)  # Wait for 60 seconds (1 minute)
-
-            summary_response = await api_request(
-                'post',
-                summary_url,
-                headers={
-                    "Content-Type": "application/json",
-                    "X-API-Key": api_key
-                },
-                json={
-                    "spacesUrl": space_url,
-                    "promptType": "formatted"
-                }
-            )
-            # Check if the summarization request was successful
-            logger.debug(f"Summary response received: {summary_response}")
-            
-            if summary_response[0]:
-                summary_data = summary_response[1]
-                summary_text = summary_data.get('summary', '✅ Space summarized successfully!')
-                return True, summary_text  # Return as a single part
-            else:
-                logger.error(f"Failed to summarize space: {summary_response[2]}")
-                # Log the entire response for debugging
-                logger.error(f"Summary response details: {summary_response}")
-                return False, f"❌ Failed to summarize space: {summary_response[2]}"
+            if job_type == 'summarization':
+                # Extract summary from job.result.summary
+                summary_text = data.get('job', {}).get('result', {}).get('summary', '✅ Space summarized successfully!')
+                if not summary_text:
+                    logger.error("No summary text found in job result")
+                    raise PermanentError("No summary text found in job result")
+                return True, summary_text
+            return True, f"{job_type.capitalize()} completed"
         elif job_status == 'failed':
-            logger.error(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
-            raise PermanentError(f"Job failed: {data.get('job', {}).get('error', 'Unknown error')}")
+            error_msg = data.get('job', {}).get('error', 'Unknown error')
+            logger.error(f"{job_type.capitalize()} job failed: {error_msg}")
+            raise PermanentError(f"{job_type.capitalize()} job failed: {error_msg}")
         else:
-            logger.warning(f"Job status is still processing: {job_status}")
-            raise TransientError("Job still processing")
-        
+            logger.warning(f"{job_type.capitalize()} job status is still processing: {job_status}")
+            raise TransientError(f"{job_type.capitalize()} job still processing")
+            
     except httpx.HTTPError as e:
-        logger.error(f"HTTP error while checking job status: {str(e)}")
-        raise TransientError(f"Failed to check job status: {str(e)}") from e
+        logger.error(f"HTTP error while checking {job_type} status: {str(e)}")
+        raise TransientError(f"Failed to check {job_type} status: {str(e)}") from e
     except Exception as e:
-        logger.error(f"Unexpected error in check_job_status: {str(e)}")
+        logger.error(f"Unexpected error in check_job_status ({job_type}): {str(e)}")
         raise TransientError(f"Unexpected error: {str(e)}") from e
 
 async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Optional[str], Optional[str]]:
@@ -258,7 +256,21 @@ async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Option
 # Create a dictionary to hold locks for each job ID
 job_locks = {}
 
-async def periodic_job_check(
+async def verify_api_key(context, chat_id, message_id):
+    """Verify API key is configured and notify user if not."""
+    if not api_key:
+        logger.error("API key not configured")
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text="❌ Error: API key not configured",
+            parse_mode=ParseMode.HTML
+        )
+        reset_user_data(context)
+        return False
+    return True
+
+async def periodic_download_check(
     context: ContextTypes.DEFAULT_TYPE,
     job_id: str,
     space_url: str,
@@ -268,19 +280,116 @@ async def periodic_job_check(
     max_attempts: int = MAX_JOB_CHECK_ATTEMPTS,
     check_interval: int = JOB_CHECK_TIMEOUT_SECONDS
 ) -> None:
-    """Periodically check the status of a summarization job with improved error handling."""
-    # Create or get the lock for this job_id
+    """Periodically check the status of a space download job."""
     if job_id not in job_locks:
         job_locks[job_id] = asyncio.Lock()
+
+    if not await verify_api_key(context, chat_id, message_id):
+        return
     
-    async with job_locks[job_id]:  # Acquire the lock
-        start_time = datetime.now()
+    async with job_locks[job_id]:
+        # start_time = datetime.now()
         attempts = 0
-        summarization_initiated = False  # Flag to track if summarization has been initiated
         
         while attempts < max_attempts:
             try:
-                success, result = await check_job_status(job_id, space_url)
+                success, result = await check_job_status(job_id, api_key, 'download')
+                
+                if success:
+                    # Download completed, initiate summarization
+                    logger.debug("Download completed, initiating summarization")
+                    summary_response = await summarize_space_api(space_url, api_key)
+                    
+                    if not summary_response[0]:
+                        raise PermanentError(f"Failed to initiate summarization: {summary_response[2]}")
+                    
+                    summary_job_id = summary_response[1].get('jobId')
+                    if not summary_job_id:
+                        raise PermanentError("No job ID received from summarization request")
+                    
+                    # Start periodic check for summarization
+                    asyncio.create_task(
+                        periodic_summarization_check(
+                            context, summary_job_id, space_url,
+                            chat_id, message_id, request_type
+                        )
+                    )
+                    return
+                
+                # Update status message
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"⏳ Downloading space... (Attempt {attempts + 1}/{max_attempts})",
+                    parse_mode=ParseMode.HTML
+                )
+                
+                await asyncio.sleep(check_interval)
+                attempts += 1
+                
+            except TransientError as e:
+                logger.warning(f"Transient error in download check: {str(e)}")
+                attempts += 1
+                await asyncio.sleep(check_interval)
+                
+            except (PermanentError, JobTimeoutError) as e:
+                logger.error(f"Permanent error in download check: {str(e)}")
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"❌ Error: {str(e)}",
+                    parse_mode=ParseMode.HTML
+                )
+                reset_user_data(context)
+                return
+                
+            except Exception as e:
+                logger.error(f"Unexpected error in download check: {str(e)}")
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="❌ An unexpected error occurred. Please try again later.",
+                    parse_mode=ParseMode.HTML
+                )
+                reset_user_data(context)
+                return
+        
+        # Max attempts reached
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text="❌ Timeout: Could not complete download in time.\n"
+            "For refunds, please contact @DarthCastelian.",
+            parse_mode=ParseMode.HTML
+        )
+        reset_user_data(context)
+
+    # Remove the lock after the job is done or failed permanently
+    job_locks.pop(job_id, None)
+
+async def periodic_summarization_check(
+    context: ContextTypes.DEFAULT_TYPE,
+    job_id: str,
+    space_url: str,
+    chat_id: int,
+    message_id: int,
+    request_type: str = 'text',
+    max_attempts: int = MAX_JOB_CHECK_ATTEMPTS,
+    check_interval: int = JOB_CHECK_TIMEOUT_SECONDS
+) -> None:
+    """Periodically check the status of a space summarization job."""
+    if job_id not in job_locks:
+        job_locks[job_id] = asyncio.Lock()
+
+    if not await verify_api_key(context, chat_id, message_id):
+        return
+    
+    async with job_locks[job_id]:
+        attempts = 0
+        
+        while attempts < max_attempts:
+            try:
+                success, result = await check_job_status(job_id, api_key, 'summarization')
                 
                 if success:
                     if request_type == 'audio':
@@ -308,116 +417,79 @@ async def periodic_job_check(
                             )
                     else:
                         # Handle the summary text
-                        summary_text = result  # Use the single result if not a list
+                        summary_text = html.escape(result, quote=False)  # Preserve quotes for readability
 
-                        logger.debug(f"Summary text received: {summary_text[:50]}...")  # Log the first 50 characters
-                        # Check if the summary exceeds 4096 characters
+                        logger.debug(f"Summary text received: {summary_text[:50]}...")
                         if len(summary_text) > 4096:
-                            # Split summary at sentence or paragraph boundaries when possible
+                            # Split summary at sentence or paragraph boundaries
                             parts = []
                             remaining = summary_text
-                            max_length = 4096
-                            while len(remaining) > max_length:
-                                # Try to find a good split point (paragraph, sentence, or word boundary)
-                                split_point = remaining[:max_length].rfind('\n\n')  # Try paragraph
-                                if split_point < max_length // 2:  # If split point is too early in text
-                                    split_point = remaining[:max_length].rfind('. ')  # Try sentence
-                                if split_point < max_length // 2:  # If still too early
-                                    split_point = remaining[:max_length].rfind(' ')  # Try word boundary
-                                if split_point < 0:  # If no good split found
-                                    split_point = max_length  # Just split at max length
+                            count = 1
+                            total_parts = (len(summary_text) // 4096) + 1
+                            while remaining:
+                                prefix = f"✅ Summary completed (part {count}/{total_parts}):\n\n"
+                                max_length = 4096 - len(prefix)
+                                split_point = remaining[:max_length].rfind('\n\n')
+                                if split_point < max_length // 2:
+                                    split_point = remaining[:max_length].rfind('. ')
+                                if split_point < max_length // 2:
+                                    split_point = remaining[:max_length].rfind(' ')
+                                if split_point < 0:
+                                    split_point = max_length
 
                                 parts.append(remaining[:split_point+1])
                                 remaining = remaining[split_point+1:]
-
-                            # Add any remaining text that's within the limit
-                            if remaining:
-                                parts.append(remaining)
-
-                            # Verify all parts are within the limit
-                            for i, part in enumerate(parts):
-                                if len(part) > max_length:
-                                    logger.warning(f"Part {i+1} exceeds max length ({len(part)} > {max_length})")
-                                    # Split the oversized part
-                                    while len(part) > max_length:
-                                        split_point = part[:max_length].rfind('\n\n')
-                                        if split_point < max_length // 2:
-                                            split_point = part[:max_length].rfind('. ')
-                                        if split_point < max_length // 2:
-                                            split_point = part[:max_length].rfind(' ')
-                                        if split_point < 0:
-                                            split_point = max_length
-                                        
-                                        parts[i] = part[:split_point+1]
-                                        part = part[split_point+1:]
-                                        parts.insert(i+1, part)
+                                count += 1
 
                             logger.debug(f"Split summary into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
 
                             # Send each part as a new message
                             for count, part in enumerate(parts, 1):
-                                logger.debug(f"Part {count} of {len(parts)}: {part[:50]}..." if len(part) > 50 else part)
+                                prefix = f"✅ Summary completed (part {count}/{len(parts)}):\n\n"
                                 await context.bot.send_message(
                                     chat_id=chat_id,
-                                    text=f"✅ Summary completed (part {count}/{len(parts)}):\n\n{part}\n\n",
+                                    text=f"{prefix}{html.escape(part, quote=False)}\n\n",
                                     parse_mode=ParseMode.HTML
                                 )
                             
-                            # Send the edit suggestion message
-                            await context.bot.send_message(
-                                chat_id=chat_id,
-                                text="If you would like a shorter version, please use /shorten_summary.\n\n"
-                                "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary.",
-                                parse_mode=ParseMode.HTML
-                            )
+                            # # Send the edit suggestion message
+                            # await context.bot.send_message(
+                            #     chat_id=chat_id,
+                            #     text="If you would like a shorter version, please use /shorten_summary.\n\n"
+                            #     "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary.",
+                            #     parse_mode=ParseMode.HTML
+                            # )
                         else:
                             await context.bot.edit_message_text(
                                 chat_id=chat_id,
                                 message_id=message_id,
-                                text=f"✅ Summary completed!\n\n{summary_text}\n\n"
-                                     "If you would like a shorter version, please use /shorten_summary.\n\n"
-                                     "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary.",
+                                text=f"✅ Summary completed!\n\n{summary_text}\n\n",
+                                    #  "If you would like a shorter version, please use /shorten_summary.\n\n"
+                                    #  "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary.",
                                 parse_mode=ParseMode.HTML
                             )
                     
                     reset_user_data(context)
                     return
                 
-                # Check for 502 error
-                if "502 Bad Gateway" in result:
-                    logger.error("Received 502 Bad Gateway Server Error during summarization")
-                    await context.bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        text="❌ The summarization service is temporarily unavailable. Please try again later.\n"
-                             "For refund, please contact @DarthCastelian.",   
-                        parse_mode=ParseMode.HTML
-                    )
-                    return  # Exit the function after sending the message
-                
-                # Check if we've exceeded the total time limit
-                if datetime.now() - start_time > timedelta(minutes=TRANSACTION_TIMEOUT_MINUTES):
-                    raise JobTimeoutError("Job processing timeout reached")
-                
                 # Update status message
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"⏳ Processing... (Attempt {attempts + 1}/{max_attempts})",
+                    text=f"⏳ Summarizing space... (Attempt {attempts + 1}/{max_attempts})",
                     parse_mode=ParseMode.HTML
                 )
                 
-                # Wait before next check
                 await asyncio.sleep(check_interval)
                 attempts += 1
                 
             except TransientError as e:
-                logger.warning(f"Transient error in job check: {str(e)}")
+                logger.warning(f"Transient error in summarization check: {str(e)}")
                 attempts += 1
                 await asyncio.sleep(check_interval)
                 
             except (PermanentError, JobTimeoutError) as e:
-                logger.error(f"Permanent error in job check: {str(e)}")
+                logger.error(f"Permanent error in summarization check: {str(e)}")
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -428,7 +500,7 @@ async def periodic_job_check(
                 return
                 
             except Exception as e:
-                logger.error(f"Unexpected error in job check: {str(e)}")
+                logger.error(f"Unexpected error in summarization check: {str(e)}")
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -448,6 +520,9 @@ async def periodic_job_check(
         )
         reset_user_data(context)
 
+    # Remove the lock after the job is done or failed permanently
+    job_locks.pop(job_id, None)
+
 async def handle_successful_transaction(
     context: ContextTypes.DEFAULT_TYPE,
     message: Message,
@@ -462,7 +537,6 @@ async def handle_successful_transaction(
             parse_mode=ParseMode.HTML
         )
 
-        api_key = os.getenv('SQR_FUND_API_KEY')
         if not api_key:
             logger.error("SQR_FUND_API_KEY not found in environment variables")
             raise PermanentError("API key not configured") from None
@@ -493,15 +567,17 @@ async def handle_successful_transaction(
             logger.error("No job ID received from download request")
             raise PermanentError("No job ID received from download request") from None
 
-        # Start the periodic job check
-        logger.debug(f"Starting periodic job check for job ID: {job_id}")
-        asyncio.create_task(
-            periodic_job_check(
+        # Start the periodic download check
+        logger.debug(f"Starting periodic download check for job ID: {job_id}")
+        task = asyncio.create_task(
+            periodic_download_check(
                 context, job_id, space_url,
                 processing_msg.chat_id, processing_msg.message_id,
                 request_type
             )
         )
+        task.add_done_callback(lambda t: logger.error(t.exception()) if t.exception() else None)
+
     except Exception as e:
         logger.error(f"Error in handle_successful_transaction: {str(e)}")
         await message.reply_text(
@@ -572,7 +648,10 @@ async def process_signature(signature: str, context: ContextTypes.DEFAULT_TYPE, 
 
 async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /edit_summary command to allow users to suggest edits."""
+    logger.debug("Received /edit_summary command")
+    
     if not context.args:
+        logger.debug("No arguments provided with /edit_summary command")
         await update.message.reply_text(
             "❌ Please provide the content for the summary edit.",
             parse_mode=ParseMode.HTML
@@ -580,8 +659,11 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     full_prompt = " ".join(context.args)
+    logger.debug(f"Full prompt received: {full_prompt}")
+    
     parts = full_prompt.split(" ", 1)
     if len(parts) < 2:
+        logger.debug("Insufficient arguments for /edit_summary command")
         await update.message.reply_text(
             "❌ Please provide both the space URL and the edit prompt.",
             parse_mode=ParseMode.HTML
@@ -590,9 +672,11 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     space_url = parts[0]
     custom_prompt = parts[1]
+    logger.debug(f"Space URL: {space_url}, Custom prompt: {custom_prompt}")
     
     # Validate the length of custom_prompt
     if len(custom_prompt) > MAX_PROMPT_LENGTH:
+        logger.debug("Edit prompt is too long")
         await update.message.reply_text(
             f"❌ Your edit prompt is too long. Please limit it to {MAX_PROMPT_LENGTH} characters.",
             parse_mode=ParseMode.HTML
@@ -601,16 +685,18 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Sanitize the custom_prompt to remove potentially harmful content
     sanitized_prompt = sanitize_input(custom_prompt)
+    logger.debug(f"Sanitized prompt: {sanitized_prompt}")
 
     if not is_valid_space_url(space_url):
+        logger.debug("Invalid space URL format")
         await update.message.reply_text(
             "❌ Invalid space URL format. Please provide a valid URL.",
             parse_mode=ParseMode.HTML
         )
         return
 
-    api_key = os.getenv('SQR_FUND_API_KEY')
     if not api_key:
+        logger.error("API key not configured")
         await update.message.reply_text(
             "❌ API key not configured. Please contact support.",
             parse_mode=ParseMode.HTML
@@ -622,25 +708,18 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    edit_response = await api_request(
-        'post',
-        "https://spaces.sqrfund.ai/api/summarize-spaces",
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key
-        },
-        json={
-            "spacesUrl": space_url,
-            "customPrompt": sanitized_prompt  # Use the sanitized prompt
-        }
-    )
+    edit_response = await summarize_space_api(space_url, api_key, sanitized_prompt)
+    logger.debug(f"Edit response received: {edit_response}")
 
     # Use the new helper function to process the response
     await process_summary_api_response(context, update, edit_response, processing_msg)
 
 async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /shorten_summary command to allow users to shorten the summary."""
+    logger.debug("Received /shorten_summary command")
+    
     if not context.args:
+        logger.debug("No arguments provided with /shorten_summary command")
         await update.message.reply_text(
             "❌ Please provide the space URL.",
             parse_mode=ParseMode.HTML
@@ -648,8 +727,10 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     space_url = context.args[0]
+    logger.debug(f"Space URL provided: {space_url}")
 
     if not is_valid_space_url(space_url):
+        logger.debug("Invalid space URL format")
         await update.message.reply_text(
             "❌ Invalid space URL format. Please provide a valid URL.",
             parse_mode=ParseMode.HTML
@@ -658,9 +739,10 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Create a default prompt to shorten the summary
     custom_prompt = "Please summarize the content in a concise manner while keeping it under 1000 words."
+    logger.debug(f"Custom prompt for shortening: {custom_prompt}")
 
-    api_key = os.getenv('SQR_FUND_API_KEY')
     if not api_key:
+        logger.error("API key not configured")
         await update.message.reply_text(
             "❌ API key not configured. Please contact support.",
             parse_mode=ParseMode.HTML
@@ -672,18 +754,8 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    edit_response = await api_request(
-        'post',
-        "https://spaces.sqrfund.ai/api/summarize-spaces",
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key
-        },
-        json={
-            "spacesUrl": space_url,
-            "customPrompt": sanitize_input(custom_prompt)  # Use the sanitized prompt
-        }
-    )
+    edit_response = await summarize_space_api(space_url, api_key, sanitize_input(custom_prompt))
+    logger.debug(f"Edit response received: {edit_response}")
 
     # Use the new helper function to process the response
     await process_summary_api_response(context, update, edit_response, processing_msg)
@@ -695,7 +767,10 @@ def validate_request_type(request_type: str) -> bool:
 async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /summarize_space command with improved error handling."""
     try:
+        logger.debug("Received /summarize_space command")
+        
         if not context.args:
+            logger.debug("No arguments provided with /summarize_space command")
             await update.message.reply_text(
                 "Please provide the X Space URL and the request type (text or audio) after the command.\n\n"
                 "Example: `/summarize_space https://x.com/i/spaces/YOUR_SPACE_ID text`",
@@ -704,7 +779,10 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         space_url = context.args[0]
+        logger.debug(f"Space URL provided: {space_url}")
+        
         if not is_valid_space_url(space_url):
+            logger.debug("Invalid space URL format")
             await update.message.reply_text(
                 "Please provide the X Space URL and the request type (text or audio) after the command.\n\n"
                 "Example: `/summarize_space https://x.com/i/spaces/YOUR_SPACE_ID text`",
@@ -715,7 +793,9 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Determine request type (text or audio)
         if len(context.args) > 1:
             request_type = context.args[1].lower()
+            logger.debug(f"Request type provided: {request_type}")
             if not validate_request_type(request_type):
+                logger.debug("Invalid request type")
                 await update.message.reply_text(
                     "❌ Invalid request type. Please specify either 'text' or 'audio'.",
                     parse_mode=ParseMode.HTML
@@ -723,8 +803,10 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
         else:
             request_type = 'text'  # Default to text if not specified
+            logger.debug("No request type provided, defaulting to 'text'")
 
         cost = AUDIO_SUMMARY_COST if request_type == 'audio' else TEXT_SUMMARY_COST
+        logger.debug(f"Calculated cost: {cost} $SQR")
         
         # Set user data for transaction
         context.user_data.update({
@@ -735,6 +817,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'job_id': None,
             'failed_attempts': 0
         })
+        logger.debug("User data updated for transaction")
 
         purchase_link = SQR_PURCHASE_LINK
         
@@ -755,6 +838,7 @@ async def summarize_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
     except (ValueError, InvalidSpaceUrlError) as e:
+        logger.error(f"Error in summarize_space: {str(e)}")
         await update.message.reply_text(
             f"❌ {str(e)}",
             parse_mode=ParseMode.HTML
