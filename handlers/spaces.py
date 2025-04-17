@@ -192,6 +192,10 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
             # Proceed with summarization
             summary_url = "https://spaces.sqrfund.ai/api/summarize-spaces"
             
+            # Add a 2-minute buffer before making the API request
+            logger.info("Waiting for 1 minute before summarizing the space...")
+            await asyncio.sleep(60)  # Wait for 60 seconds (1 minute)
+
             summary_response = await api_request(
                 'post',
                 summary_url,
@@ -204,6 +208,8 @@ async def check_job_status(job_id: str, space_url: str) -> Tuple[bool, str]:
                     "promptType": "formatted"
                 }
             )
+            # Check if the summarization request was successful
+            logger.debug(f"Summary response received: {summary_response}")
             
             if summary_response[0]:
                 summary_data = summary_response[1]
@@ -452,7 +458,7 @@ async def handle_successful_transaction(
     """Handle a successful transaction with improved error handling."""
     try:
         processing_msg = await message.reply_text(
-            "⏳ Processing your request... This may take up to 5 minutes.",
+            "⏳ Processing your request... This may take up to 5-7 minutes.",
             parse_mode=ParseMode.HTML
         )
 
