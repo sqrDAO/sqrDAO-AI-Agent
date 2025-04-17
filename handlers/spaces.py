@@ -226,7 +226,7 @@ async def check_job_status(job_id: str, api_key: str, job_type: str = 'download'
         logger.error(f"HTTP error while checking {job_type} status: {str(e)}")
         raise TransientError(f"Failed to check {job_type} status: {str(e)}") from e
     except Exception as e:
-        logger.error(f"Unexpected error in check_{job_type}_status: {str(e)}")
+        logger.error(f"Unexpected error in check_job_status ({job_type}): {str(e)}")
         raise TransientError(f"Unexpected error: {str(e)}") from e
 
 async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Optional[str], Optional[str]]:
@@ -331,7 +331,7 @@ async def periodic_download_check(
         job_locks[job_id] = asyncio.Lock()
     
     async with job_locks[job_id]:
-        start_time = datetime.now()
+        # start_time = datetime.now()
         attempts = 0
         
         while attempts < max_attempts:
@@ -425,7 +425,7 @@ async def periodic_summarization_check(
         job_locks[job_id] = asyncio.Lock()
     
     async with job_locks[job_id]:
-        start_time = datetime.now()
+        # start_time = datetime.now()
         attempts = 0
         
         while attempts < max_attempts:
@@ -608,13 +608,15 @@ async def handle_successful_transaction(
 
         # Start the periodic download check
         logger.debug(f"Starting periodic download check for job ID: {job_id}")
-        asyncio.create_task(
+        task = asyncio.create_task(
             periodic_download_check(
                 context, job_id, space_url,
                 processing_msg.chat_id, processing_msg.message_id,
                 request_type
             )
         )
+        task.add_done_callback(lambda t: logger.error(t.exception()) if t.exception() else None)
+
     except Exception as e:
         logger.error(f"Error in handle_successful_transaction: {str(e)}")
         await message.reply_text(
