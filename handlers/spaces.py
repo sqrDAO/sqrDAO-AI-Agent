@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 api_key = os.getenv('SQR_FUND_API_KEY')
+if not api_key:
+    logger.warning("SQR_FUND_API_KEY environment variable not set. Space summarization functionality will be unavailable.")
 
 class SpaceSummarizationError(Exception):
     """Base class for space summarization errors."""
@@ -368,6 +370,17 @@ async def periodic_summarization_check(
     """Periodically check the status of a space summarization job."""
     if job_id not in job_locks:
         job_locks[job_id] = asyncio.Lock()
+
+    if not api_key:
+        logger.error("API key not configured")
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text="❌ Error: API key not configured",
+            parse_mode=ParseMode.HTML
+        )
+        reset_user_data(context)
+        return
     
     async with job_locks[job_id]:
         # start_time = datetime.now()
@@ -375,9 +388,6 @@ async def periodic_summarization_check(
         
         while attempts < max_attempts:
             try:
-                if not api_key:
-                    raise PermanentError("API key not configured") from None
-
                 success, result = await check_job_status(job_id, api_key, 'summarization')
                 
                 if success:
