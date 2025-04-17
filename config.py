@@ -22,7 +22,11 @@ if not GOOGLE_API_KEY or not GOOGLE_CSE_ID or not SQR_FUND_API_KEY:
     raise ValueError("Additional environment variables are missing.")
 
 # Solana Configuration
-SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
+SOLANA_RPC_API_KEY = os.getenv('SOLANA_RPC_API_KEY')
+if not SOLANA_RPC_API_KEY:
+    SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com'
+else:
+    SOLANA_RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=' + SOLANA_RPC_API_KEY
 SQR_TOKEN_MINT = "CsZmZ4fz9bBjGRcu3Ram4tmLRMmKS6GPWqz4ZVxsxpNX"
 RECIPIENT_WALLET = "Dt4ansTyBp3ygaDnK1UeR1YVPtyLm5VDqnisqvDR5LM7"
 TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
