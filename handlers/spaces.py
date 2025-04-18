@@ -243,7 +243,7 @@ async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Option
         filepath = os.path.join(temp_dir, filename)
         
         # Convert text to speech
-        tts = gTTS(text=text, lang=language, slow=False)
+        tts = gTTS(text=sanitize_input(text), lang=language, slow=False)
         
         # Save the audio file
         tts.save(filepath)  # Direct save to the file path
@@ -375,7 +375,8 @@ async def periodic_summarization_check(
     message_id: int,
     request_type: str = 'text',
     max_attempts: int = MAX_JOB_CHECK_ATTEMPTS,
-    check_interval: int = JOB_CHECK_TIMEOUT_SECONDS
+    check_interval: int = JOB_CHECK_TIMEOUT_SECONDS,
+    summary_type: str = 'full'
 ) -> None:
     """Periodically check the status of a space summarization job."""
     if job_id not in job_locks:
@@ -429,12 +430,14 @@ async def periodic_summarization_check(
                             while remaining:
                                 prefix = f"✅ Summary completed (part {count}/{total_parts}):\n\n"
                                 max_length = 4096 - len(prefix)
+                                # Recalculate average_length based on remaining text
+                                average_length = len(remaining) // (total_parts - count + 1)
                                 split_point = remaining[:max_length].rfind('\n\n')
                                 if split_point < max_length // 2:
                                     split_point = remaining[:max_length].rfind('. ')
                                 if split_point < max_length // 2:
                                     split_point = remaining[:max_length].rfind(' ')
-                                if split_point < 0:
+                                if split_point < 0 or split_point < average_length // 2:
                                     split_point = max_length
 
                                 parts.append(remaining[:split_point+1])
@@ -448,24 +451,26 @@ async def periodic_summarization_check(
                                 prefix = f"✅ Summary completed (part {count}/{len(parts)}):\n\n"
                                 await context.bot.send_message(
                                     chat_id=chat_id,
-                                    text=f"{prefix}{html.escape(part, quote=False)}\n\n",
+                                    text=f"{prefix}{part}",
                                     parse_mode=ParseMode.HTML
                                 )
                             
-                            # # Send the edit suggestion message
-                            # await context.bot.send_message(
-                            #     chat_id=chat_id,
-                            #     text="If you would like a shorter version, please use /shorten_summary.\n\n"
-                            #     "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary.",
-                            #     parse_mode=ParseMode.HTML
-                            # )
-                        else:
-                            await context.bot.edit_message_text(
+                            # Send the edit suggestion message
+                            if summary_type == 'shorten' or summary_type == 'edit':
+                                await context.bot.send_message(
                                 chat_id=chat_id,
-                                message_id=message_id,
-                                text=f"✅ Summary completed!\n\n{summary_text}\n\n",
-                                    #  "If you would like a shorter version, please use /shorten_summary.\n\n"
-                                    #  "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary.",
+                                text="If you would like a shorter version, please use /shorten_summary.\n\n"
+                                "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary.",
+                                parse_mode=ParseMode.HTML
+                            )
+                        else:
+                            response_text = f"✅ Summary completed!\n\n{summary_text}\n\n"
+                            if summary_type == 'shorten' or summary_type == 'edit':
+                                response_text += "If you would like a shorter version, please use /shorten_summary.\n\n"
+                                response_text += "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary."
+                            await context.bot.send_message(
+                                chat_id=chat_id,
+                                text=response_text,
                                 parse_mode=ParseMode.HTML
                             )
                     
@@ -653,7 +658,7 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         logger.debug("No arguments provided with /edit_summary command")
         await update.message.reply_text(
-            "❌ Please provide the content for the summary edit.",
+            "❌ Please provide both the URL and the prompt for the summary edit.",
             parse_mode=ParseMode.HTML
         )
         return
@@ -704,15 +709,29 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     processing_msg = await update.message.reply_text(
-        "🔄 Processing your edit request (this may take up to 60 seconds)...",
+        "🔄 Processing your edit request (this may take up to 2 minutes)...",
         parse_mode=ParseMode.HTML
     )
 
-    edit_response = await summarize_space_api(space_url, api_key, sanitized_prompt)
-    logger.debug(f"Edit response received: {edit_response}")
+    request = await summarize_space_api(space_url, api_key, sanitized_prompt)
+    logger.debug(f"Edit response received: {request}")
 
-    # Use the new helper function to process the response
-    await process_summary_api_response(context, update, edit_response, processing_msg)
+    summary_job_id = request[1].get('jobId')
+    
+    if not summary_job_id:
+        raise PermanentError("No job ID received from summarization request")
+                    
+    # Start periodic check for summarization
+    asyncio.create_task(
+        periodic_summarization_check(
+            context, summary_job_id, space_url,
+            processing_msg.chat_id, processing_msg.message_id, 'text',
+            max_attempts=int(MAX_JOB_CHECK_ATTEMPTS),
+            check_interval=JOB_CHECK_TIMEOUT_SECONDS,
+            summary_type='edit'
+        )
+    )
+    return
 
 async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /shorten_summary command to allow users to shorten the summary."""
@@ -750,15 +769,34 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     processing_msg = await update.message.reply_text(
-        "🔄 Processing your shortening request (this may take up to 60 seconds)...",
+        "🔄 Processing your shortening request (this may take up to 2 minutes)...",
         parse_mode=ParseMode.HTML
     )
 
-    edit_response = await summarize_space_api(space_url, api_key, sanitize_input(custom_prompt))
-    logger.debug(f"Edit response received: {edit_response}")
+    request = await summarize_space_api(space_url, api_key, sanitize_input(custom_prompt))
+    logger.debug(f"Request response received: {request}")
 
-    # Use the new helper function to process the response
-    await process_summary_api_response(context, update, edit_response, processing_msg)
+    summary_job_id = request[1].get('jobId')
+    
+    if not summary_job_id:
+        logger.error("No job ID received from summarization request")
+        await update.message.reply_text(
+            "❌ Failed to initiate summarization. Please try again later.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Start periodic check for summarization
+    asyncio.create_task(
+        periodic_summarization_check(
+            context, summary_job_id, space_url,
+            update.message.chat_id, update.message.message_id, 'text',
+            max_attempts=int(MAX_JOB_CHECK_ATTEMPTS),
+            check_interval=JOB_CHECK_TIMEOUT_SECONDS,
+            summary_type='shorten'
+        )
+    )
+    return
 
 def validate_request_type(request_type: str) -> bool:
     """Validate the request type is either 'text' or 'audio'."""
