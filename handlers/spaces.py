@@ -465,7 +465,7 @@ async def periodic_summarization_check(
                             )
                         else:
                             response_text = f"✅ Summary completed!\n\n{summary_text}\n\n"
-                            if summary_type == 'shorten' or summary_type == 'edit':
+                            if summary_type == 'full':
                                 response_text += "If you would like a shorter version, please use /shorten_summary.\n\n"
                                 response_text += "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary."
                             await context.bot.send_message(
