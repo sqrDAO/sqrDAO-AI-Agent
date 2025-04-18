@@ -431,7 +431,10 @@ async def periodic_summarization_check(
                                 prefix = f"✅ Summary completed (part {count}/{total_parts}):\n\n"
                                 max_length = 4096 - len(prefix)
                                 # Recalculate average_length based on remaining text
-                                average_length = len(remaining) // (total_parts - count + 1)
+                                if total_parts - count + 1 <= 0:
+                                    average_length = len(remaining)
+                                else:
+                                    average_length = len(remaining) // (total_parts - count + 1)
                                 split_point = remaining[:max_length].rfind('\n\n')
                                 if split_point < max_length // 2:
                                     split_point = remaining[:max_length].rfind('. ')
