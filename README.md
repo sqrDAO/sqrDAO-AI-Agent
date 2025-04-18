@@ -96,6 +96,11 @@ The `/summarize_space` command allows users to:
 - Handle multiple attempts with proper error messages
 - Support for both private and group chats
 - Edit generated summaries using `/edit_summary`
+- Shorten summaries using `/shorten_summary`
+- Support for both text and audio summaries
+- Automatic splitting of long summaries into multiple messages
+- Progress tracking with attempt counts
+- Proper error handling and user feedback
 
 #### Integration with sqrDAO Spaces Summarization API
 
@@ -107,21 +112,26 @@ The bot integrates with the [sqrDAO Spaces Summarization API](https://github.com
 - Provides job tracking and status updates
 - Handles authentication and API key management
 - Supports custom prompt types for different summarization styles
-- Allows editing of generated summaries
+- Allows editing and shortening of generated summaries
+- Implements proper locking mechanisms to prevent duplicate processing
+- Includes comprehensive error handling and logging
+- Supports both text and audio output formats
 
 #### Usage
 
 To summarize a Twitter Space:
-1. Send the `/summarize_space` command followed by the Space URL
+1. Send the `/summarize_space` command followed by the Space URL and type (text/audio)
 2. The bot will verify your SQR token balance and process the payment
 3. The Space will be downloaded and processed by the sqrDAO Spaces Summarization API
 4. You'll receive a formatted summary of the Space content
 5. Use `/edit_summary` to modify the generated summary if needed
+6. Use `/shorten_summary` to get a more concise version
 
 Example:
 ```bash
-/summarize_space https://twitter.com/i/spaces/YOUR_SPACE_ID
-/edit_summary [summary_id] [your_edited_summary]
+/summarize_space https://twitter.com/i/spaces/YOUR_SPACE_ID text
+/edit_summary https://twitter.com/i/spaces/YOUR_SPACE_ID [your_edit_prompt]
+/shorten_summary https://twitter.com/i/spaces/YOUR_SPACE_ID
 ```
 
 #### Token Requirements
@@ -131,6 +141,8 @@ Example:
 - The fee is automatically deducted from your wallet
 - You must have sufficient SQR tokens in your wallet to use this feature
 - Token transfers are verified on-chain before processing begins
+- Transaction must be completed within 30 minutes of request
+- Supports up to 3 signature attempts for failed transactions
 
 ## Setup
 
