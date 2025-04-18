@@ -243,7 +243,7 @@ async def convert_text_to_audio(text: str, language: str = 'en') -> Tuple[Option
         filepath = os.path.join(temp_dir, filename)
         
         # Convert text to speech
-        tts = gTTS(text=text, lang=language, slow=False)
+        tts = gTTS(text=sanitize_input(text), lang=language, slow=False)
         
         # Save the audio file
         tts.save(filepath)  # Direct save to the file path
@@ -427,10 +427,11 @@ async def periodic_summarization_check(
                             remaining = summary_text
                             count = 1
                             total_parts = (len(summary_text) // 4096) + 1
-                            average_length = len(summary_text) // total_parts
                             while remaining:
                                 prefix = f"✅ Summary completed (part {count}/{total_parts}):\n\n"
                                 max_length = 4096 - len(prefix)
+                                # Recalculate average_length based on remaining text
+                                average_length = len(remaining) // (total_parts - count + 1)
                                 split_point = remaining[:max_length].rfind('\n\n')
                                 if split_point < max_length // 2:
                                     split_point = remaining[:max_length].rfind('. ')
@@ -450,7 +451,7 @@ async def periodic_summarization_check(
                                 prefix = f"✅ Summary completed (part {count}/{len(parts)}):\n\n"
                                 await context.bot.send_message(
                                     chat_id=chat_id,
-                                    text=f"{prefix}{html.escape(part, quote=False)}",
+                                    text=f"{prefix}{part}",
                                     parse_mode=ParseMode.HTML
                                 )
                             
@@ -724,7 +725,7 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(
         periodic_summarization_check(
             context, summary_job_id, space_url,
-            update.message.chat_id, update.message.message_id, 'text',
+            processing_msg.chat_id, processing_msg.message_id, 'text',
             max_attempts=int(MAX_JOB_CHECK_ATTEMPTS),
             check_interval=JOB_CHECK_TIMEOUT_SECONDS,
             summary_type='edit'
@@ -773,19 +774,23 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     request = await summarize_space_api(space_url, api_key, sanitize_input(custom_prompt))
-
     logger.debug(f"Request response received: {request}")
 
     summary_job_id = request[1].get('jobId')
     
     if not summary_job_id:
-        raise PermanentError("No job ID received from summarization request")
-                    
+        logger.error("No job ID received from summarization request")
+        await update.message.reply_text(
+            "❌ Failed to initiate summarization. Please try again later.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     # Start periodic check for summarization
     asyncio.create_task(
         periodic_summarization_check(
             context, summary_job_id, space_url,
-            update.message.chat_id, update.message.message_id, 'text', 
+            update.message.chat_id, update.message.message_id, 'text',
             max_attempts=int(MAX_JOB_CHECK_ATTEMPTS),
             check_interval=JOB_CHECK_TIMEOUT_SECONDS,
             summary_type='shorten'
