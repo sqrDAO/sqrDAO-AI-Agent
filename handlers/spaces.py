@@ -657,7 +657,7 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         logger.debug("No arguments provided with /edit_summary command")
         await update.message.reply_text(
-            "❌ Please provide the content for the summary edit.",
+            "❌ Please provide both the URL and the prompt for the summary edit.",
             parse_mode=ParseMode.HTML
         )
         return
@@ -712,11 +712,25 @@ async def edit_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    edit_response = await summarize_space_api(space_url, api_key, sanitized_prompt)
-    logger.debug(f"Edit response received: {edit_response}")
+    request = await summarize_space_api(space_url, api_key, sanitized_prompt)
+    logger.debug(f"Edit response received: {request}")
 
-    # Use the new helper function to process the response
-    await process_summary_api_response(context, update, edit_response, processing_msg)
+    summary_job_id = request[1].get('jobId')
+    
+    if not summary_job_id:
+        raise PermanentError("No job ID received from summarization request")
+                    
+    # Start periodic check for summarization
+    asyncio.create_task(
+        periodic_summarization_check(
+            context, summary_job_id, space_url,
+            update.message.chat_id, update.message.message_id, 'text',
+            max_attempts=int(MAX_JOB_CHECK_ATTEMPTS),
+            check_interval=JOB_CHECK_TIMEOUT_SECONDS,
+            summary_type='edit'
+        )
+    )
+    return
 
 async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /shorten_summary command to allow users to shorten the summary."""
@@ -771,7 +785,10 @@ async def shorten_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(
         periodic_summarization_check(
             context, summary_job_id, space_url,
-            update.message.chat_id, update.message.message_id, 'text', 'shorten'
+            update.message.chat_id, update.message.message_id, 'text', 
+            max_attempts=int(MAX_JOB_CHECK_ATTEMPTS),
+            check_interval=JOB_CHECK_TIMEOUT_SECONDS,
+            summary_type='shorten'
         )
     )
     return
