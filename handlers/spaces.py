@@ -297,8 +297,11 @@ async def periodic_download_check(
                 
                 if success:
                     # Download completed, initiate summarization
+                    custom_prompt = "Summarize the space in a way that is easy to understand and engaging for a wide audience."
+                    "Include the names of the speakers. Do not need to tag the social media accounts of the speakers or attendees."
+                    "Limit the length of the summary to 8000 words maximum."
                     logger.debug("Download completed, initiating summarization")
-                    summary_response = await summarize_space_api(space_url, api_key)
+                    summary_response = await summarize_space_api(space_url, api_key, custom_prompt)
                     
                     if not summary_response[0]:
                         raise PermanentError(f"Failed to initiate summarization: {summary_response[2]}")
