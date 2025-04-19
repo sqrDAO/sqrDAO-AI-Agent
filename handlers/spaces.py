@@ -16,7 +16,7 @@ from solana.rpc.commitment import Commitment
 from solders.signature import Signature
 from handlers.general import find_member_by_username  # Ensure this import is at the top of your file
 from utils.retry import with_retry, TransientError, PermanentError, TransactionError
-from utils.utils import is_valid_space_url, sanitize_input, process_summary_api_response, api_request, format_response_for_telegram
+from utils.utils import is_valid_space_url, sanitize_input, api_request, format_response_for_telegram
 from config import (
     TEXT_SUMMARY_COST,
     AUDIO_SUMMARY_COST,
