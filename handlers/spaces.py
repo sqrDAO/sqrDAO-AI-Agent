@@ -16,7 +16,7 @@ from solana.rpc.commitment import Commitment
 from solders.signature import Signature
 from handlers.general import find_member_by_username  # Ensure this import is at the top of your file
 from utils.retry import with_retry, TransientError, PermanentError, TransactionError
-from utils.utils import is_valid_space_url, sanitize_input, process_summary_api_response, api_request
+from utils.utils import is_valid_space_url, sanitize_input, process_summary_api_response, api_request, format_response_for_telegram
 from config import (
     TEXT_SUMMARY_COST,
     AUDIO_SUMMARY_COST,
@@ -215,6 +215,7 @@ async def check_job_status(job_id: str, api_key: str, job_type: str = 'download'
                 if not summary_text:
                     logger.error("No summary text found in job result")
                     raise PermanentError("No summary text found in job result")
+                summary_text = format_response_for_telegram(summary_text, parse_mode=ParseMode.HTML)
                 return True, summary_text
             return True, f"{job_type.capitalize()} completed"
         elif job_status == 'failed':
@@ -297,11 +298,7 @@ async def periodic_download_check(
                 
                 if success:
                     # Download completed, initiate summarization
-                    custom_prompt = "Summarize the space in a way that is easy to understand and engaging for a wide audience."
-                    "Include the names of the speakers. Do not need to tag the social media accounts of the speakers or attendees."
-                    "Limit the length of the summary to 8000 words maximum."
-                    logger.debug("Download completed, initiating summarization")
-                    summary_response = await summarize_space_api(space_url, api_key, custom_prompt)
+                    summary_response = await summarize_space_api(space_url, api_key)
                     
                     if not summary_response[0]:
                         raise PermanentError(f"Failed to initiate summarization: {summary_response[2]}")
@@ -425,19 +422,14 @@ async def periodic_summarization_check(
 
                         logger.debug(f"Summary text received: {summary_text[:50]}...")
                         if len(summary_text) > 4096:
-                            # Split summary at sentence or paragraph boundaries
                             parts = []
                             remaining = summary_text
-                            count = 1
                             total_parts = (len(summary_text) // 4096) + 1
+                            average_length = len(summary_text) // total_parts
+                            count = 1
                             while remaining:
                                 prefix = f"✅ Summary completed (part {count}/{total_parts}):\n\n"
                                 max_length = 4096 - len(prefix)
-                                # Recalculate average_length based on remaining text
-                                if total_parts - count + 1 <= 0:
-                                    average_length = len(remaining)
-                                else:
-                                    average_length = len(remaining) // (total_parts - count + 1)
                                 split_point = remaining[:max_length].rfind('\n\n')
                                 if split_point < max_length // 2:
                                     split_point = remaining[:max_length].rfind('. ')
@@ -446,13 +438,16 @@ async def periodic_summarization_check(
                                 if split_point < 0 or split_point < average_length // 2:
                                     split_point = max_length
 
+                                # Adjust the split point if the last part is too short
+                                if len(remaining) - split_point < average_length // 2 and count < total_parts:
+                                    split_point = max_length - (average_length // 2)
+
                                 parts.append(remaining[:split_point+1])
                                 remaining = remaining[split_point+1:]
                                 count += 1
 
                             logger.debug(f"Split summary into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
 
-                            # Send each part as a new message
                             for count, part in enumerate(parts, 1):
                                 prefix = f"✅ Summary completed (part {count}/{len(parts)}):\n\n"
                                 await context.bot.send_message(
@@ -474,6 +469,8 @@ async def periodic_summarization_check(
                             if summary_type == 'full':
                                 response_text += "If you would like a shorter version, please use /shorten_summary.\n\n"
                                 response_text += "Alternatively, if you would like to make suggestions or edits, use the command /edit_summary."
+                            response_text = format_response_for_telegram(response_text, parse_mode=ParseMode.HTML)
+                            logger.debug(f"Summary text received: {response_text}")
                             await context.bot.send_message(
                                 chat_id=chat_id,
                                 text=response_text,

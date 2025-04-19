@@ -4,7 +4,7 @@ from telegram.ext.filters import BaseFilter
 import logging
 
 # Initialize the logger
-logging.basicConfig(level=logging.INFO)  # Set the logging level as needed
+logging.basicConfig(level=logging.DEBUG)  # Set the logging level as needed
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -39,7 +39,7 @@ AUDIO_SUMMARY_COST = 2000
 # Timeouts
 TRANSACTION_TIMEOUT_MINUTES = 30
 JOB_CHECK_TIMEOUT_SECONDS = 60
-MAX_JOB_CHECK_ATTEMPTS = 6
+MAX_JOB_CHECK_ATTEMPTS = 10
 
 # Database
 DATABASE_FILE = os.getenv('DATABASE_FILE', 'bot_memory.db')

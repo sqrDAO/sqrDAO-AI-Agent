@@ -22,9 +22,6 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
     logger.debug(f"Input text: {text}")  # Log input text
 
     if parse_mode == 'HTML':
-        # First escape all HTML special characters
-        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        
         # Use regex to handle markdown-style formatting
         # Handle bold text
         text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
@@ -49,10 +46,6 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         allowed_tags = ['b', 'i', 'u', 'pre', 'code', 'a']
         allowed_attributes = {'a': ['href']}
 
-
-        # Remove escape characters for quotes
-        text = text.replace('\\"', '"').replace("\\'", "'")
-
         # Format hyperlinks correctly
         # Convert Markdown links to HTML links with more robust regex
         # Handles URLs with special characters and prevents partial matches
@@ -64,6 +57,9 @@ def format_response_for_telegram(text: str, parse_mode: str = 'HTML') -> str:
         
         # Sanitize the HTML to remove unsupported tags and fix any issues
         text = bleach.clean(text, tags=allowed_tags, attributes=allowed_attributes, strip=True)
+
+        # Re-escape & to &amp; after bleach sanitization
+        text = text.replace('&', '&amp;').replace('&amp;', '&')  # Ensure &amp; is not double-escaped
 
         logger.debug(f"Formatted text: {text}")  # Log the formatted text
         return text
