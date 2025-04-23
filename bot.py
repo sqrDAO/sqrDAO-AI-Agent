@@ -37,7 +37,7 @@ from db import Database
 from utils.utils import (
     format_response_for_telegram, extract_urls,
     get_webpage_content, escape_markdown_v2,
-    get_announcement_prefix, parse_mass_message_input,
+    parse_mass_message_input,
     get_error_message, get_success_message,
     load_authorized_members, extract_keywords, retrieve_knowledge, format_context
 )
