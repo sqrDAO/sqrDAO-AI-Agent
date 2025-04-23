@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 import logging
-from utils.utils import get_announcement_prefix, parse_mass_message_input, get_error_message
+from utils.utils import parse_mass_message_input, get_error_message
 from handlers.general import find_authorized_member_by_username
 
 logger = logging.getLogger(__name__)
@@ -163,11 +163,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for group in filtered_groups:
             try:
                 if media:
-                    # Get announcement prefix using helper function
-                    announcement_prefix = get_announcement_prefix(grouptype)
-                    
                     # Send media (image, video, or document) with caption
-                    formatted_caption = f"{announcement_prefix}\n\n{message}" if message else None
+                    formatted_caption = f"{message}" if message else None
                     if update.message.photo:
                         await context.bot.send_photo(
                             chat_id=group['id'],
@@ -190,13 +187,10 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             parse_mode=ParseMode.HTML if formatted_caption else None
                         )
                 else:
-                    # Get announcement prefix using helper function
-                    announcement_prefix = get_announcement_prefix(grouptype)
-                    
                     # Send text message
                     await context.bot.send_message(
                         chat_id=group['id'],
-                        text=f"{announcement_prefix}\n\n{message}",
+                        text=f"{message}",
                         parse_mode=ParseMode.HTML
                     )
                 group_success_count += 1
