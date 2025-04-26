@@ -140,7 +140,8 @@ async def check_transaction_status(signature: str, command_start_time: datetime,
                     if pre_balance:
                         pre_amount = float(pre_balance.ui_token_amount.ui_amount_string)
                         post_amount = float(post_balance.ui_token_amount.ui_amount_string)
-                        transfer_amount = post_amount - pre_amount
+                        # Calculate absolute difference to handle both sending and receiving
+                        transfer_amount = abs(post_amount - pre_amount)
                         break
             
             required_amount = AUDIO_SUMMARY_COST if request_type == 'audio' else TEXT_SUMMARY_COST
@@ -427,32 +428,67 @@ async def periodic_summarization_check(
                             total_parts = (len(summary_text) // 4096) + 1
                             average_length = len(summary_text) // total_parts
                             count = 1
+                            
                             while remaining:
+                                # Calculate prefix length including the part number
                                 prefix = f"✅ Summary completed (part {count}/{total_parts}):\n\n"
-                                max_length = 4096 - len(prefix)
-                                split_point = remaining[:max_length].rfind('\n\n')
-                                if split_point < max_length // 2:
-                                    split_point = remaining[:max_length].rfind('. ')
-                                if split_point < max_length // 2:
-                                    split_point = remaining[:max_length].rfind(' ')
+                                prefix_length = len(prefix)
+                                max_content_length = 4096 - prefix_length
+                                
+                                # First try to split at paragraph breaks
+                                split_point = remaining[:max_content_length].rfind('\n\n')
+                                
+                                # If no paragraph break found, try to split at sentence endings
+                                if split_point < max_content_length // 2:
+                                    sentence_endings = ['. ', '! ', '? ', '.\n', '!\n', '?\n']
+                                    for ending in sentence_endings:
+                                        temp_split = remaining[:max_content_length].rfind(ending)
+                                        if temp_split > split_point:
+                                            split_point = temp_split + len(ending)
+                                
+                                # If still no good split point, try to split at word boundaries
+                                if split_point < max_content_length // 2:
+                                    split_point = remaining[:max_content_length].rfind(' ')
+                                
+                                # If no good split point found, force split at max_content_length
                                 if split_point < 0 or split_point < average_length // 2:
-                                    split_point = max_length
-
+                                    split_point = max_content_length
+                                
+                                # Ensure we don't split in the middle of a sentence if possible
+                                if split_point < len(remaining) - 1:
+                                    next_char = remaining[split_point]
+                                    if next_char not in ['.', '!', '?', '\n', ' ']:
+                                        # Look for the next sentence ending
+                                        for ending in sentence_endings:
+                                            next_ending = remaining[split_point:].find(ending)
+                                            if next_ending != -1:
+                                                split_point += next_ending + len(ending)
+                                                break
+                                
                                 # Adjust the split point if the last part is too short
                                 if len(remaining) - split_point < average_length // 2 and count < total_parts:
-                                    split_point = max_length - (average_length // 2)
-
-                                parts.append(remaining[:split_point+1])
-                                remaining = remaining[split_point+1:]
+                                    split_point = max_content_length - (average_length // 2)
+                                
+                                # Ensure we don't exceed the maximum length
+                                if split_point > max_content_length:
+                                    split_point = max_content_length
+                                
+                                parts.append(remaining[:split_point].strip())
+                                remaining = remaining[split_point:].strip()
                                 count += 1
 
                             logger.debug(f"Split summary into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
 
                             for count, part in enumerate(parts, 1):
                                 prefix = f"✅ Summary completed (part {count}/{len(parts)}):\n\n"
+                                message = f"{prefix}{part}"
+                                if len(message) > 4096:
+                                    logger.error(f"Message part {count} exceeds 4096 characters: {len(message)}")
+                                    # Emergency fallback: split at exact max length
+                                    message = message[:4096]
                                 await context.bot.send_message(
                                     chat_id=chat_id,
-                                    text=f"{prefix}{part}",
+                                    text=message,
                                     parse_mode=ParseMode.HTML
                                 )
                             
