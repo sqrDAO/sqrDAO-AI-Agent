@@ -426,56 +426,72 @@ async def periodic_summarization_check(
                             parts = []
                             remaining = summary_text
                             total_parts = (len(summary_text) // 4096) + 1
-                            average_length = len(summary_text) // total_parts
-                            count = 1
                             
+                            # Calculate target length for each part, accounting for prefix
+                            prefix_template = "✅ Summary completed (part {}/{total_parts}):\n\n"
+                            prefix_length = len(prefix_template.format(1, total_parts=total_parts))
+                            max_content_length = 4096 - prefix_length
+                            target_length = len(summary_text) // total_parts
+                            
+                            # Ensure target length doesn't exceed max content length
+                            target_length = min(target_length, max_content_length)
+                            
+                            count = 1
                             while remaining:
-                                # Calculate prefix length including the part number
-                                prefix = f"✅ Summary completed (part {count}/{total_parts}):\n\n"
-                                prefix_length = len(prefix)
-                                max_content_length = 4096 - prefix_length
+                                # Calculate current prefix length
+                                current_prefix = f"✅ Summary completed (part {count}/{total_parts}):\n\n"
+                                current_prefix_length = len(current_prefix)
+                                current_max_length = 4096 - current_prefix_length
                                 
-                                # First try to split at paragraph breaks
-                                split_point = remaining[:max_content_length].rfind('\n\n')
+                                # If remaining text is shorter than target, use it all
+                                if len(remaining) <= current_max_length:
+                                    parts.append(remaining)
+                                    break
                                 
-                                # If no paragraph break found, try to split at sentence endings
-                                if split_point < max_content_length // 2:
+                                # Find optimal split point
+                                split_point = None
+                                
+                                # Try to find a split point near the target length
+                                target_split = min(len(remaining), target_length)
+                                
+                                # Look for paragraph breaks near target
+                                paragraph_split = remaining[:target_split].rfind('\n\n')
+                                if paragraph_split > target_split * 0.8:  # If paragraph break is close to target
+                                    split_point = paragraph_split
+                                
+                                # If no good paragraph break, look for sentence endings
+                                if split_point is None:
                                     sentence_endings = ['. ', '! ', '? ', '.\n', '!\n', '?\n']
                                     for ending in sentence_endings:
-                                        temp_split = remaining[:max_content_length].rfind(ending)
-                                        if temp_split > split_point:
+                                        temp_split = remaining[:target_split].rfind(ending)
+                                        if temp_split > target_split * 0.8:
                                             split_point = temp_split + len(ending)
+                                            break
                                 
-                                # If still no good split point, try to split at word boundaries
-                                if split_point < max_content_length // 2:
-                                    split_point = remaining[:max_content_length].rfind(' ')
+                                # If still no good split point, look for word boundaries
+                                if split_point is None:
+                                    word_split = remaining[:target_split].rfind(' ')
+                                    if word_split > target_split * 0.8:
+                                        split_point = word_split
                                 
-                                # If no good split point found, force split at max_content_length
-                                if split_point < 0 or split_point < average_length // 2:
-                                    split_point = max_content_length
+                                # If no good split point found, force split at target length
+                                if split_point is None:
+                                    split_point = target_split
                                 
-                                # Ensure we don't split in the middle of a sentence if possible
-                                if split_point < len(remaining) - 1:
-                                    next_char = remaining[split_point]
-                                    if next_char not in ['.', '!', '?', '\n', ' ']:
-                                        # Look for the next sentence ending
-                                        for ending in sentence_endings:
-                                            next_ending = remaining[split_point:].find(ending)
-                                            if next_ending != -1:
-                                                split_point += next_ending + len(ending)
-                                                break
+                                # Ensure we don't exceed max length
+                                split_point = min(split_point, current_max_length)
                                 
-                                # Adjust the split point if the last part is too short
-                                if len(remaining) - split_point < average_length // 2 and count < total_parts:
-                                    split_point = max_content_length - (average_length // 2)
-                                
-                                # Ensure we don't exceed the maximum length
-                                if split_point > max_content_length:
-                                    split_point = max_content_length
-                                
+                                # Add the part
                                 parts.append(remaining[:split_point].strip())
                                 remaining = remaining[split_point:].strip()
                                 count += 1
+                                
+                                # Adjust target length for remaining parts
+                                if remaining:
+                                    remaining_parts = total_parts - count
+                                    if remaining_parts > 0:
+                                        target_length = len(remaining) // remaining_parts
+                                        target_length = min(target_length, max_content_length)
 
                             logger.debug(f"Split summary into {len(parts)} parts with lengths: {[len(part) for part in parts]}")
 
