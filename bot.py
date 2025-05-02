@@ -132,7 +132,11 @@ async def handle_private_message(message: Message, context: ContextTypes.DEFAULT
         )
 
 async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_TYPE):
-    """Handle group messages."""
+    """
+    Processes group messages, replying only when the bot is explicitly mentioned.
+    
+    Checks if the message originates from a group where the bot is a member and determines if the bot is mentioned via '@username' or direct user mention. If mentioned, generates and sends an AI-powered response; otherwise, ignores the message. Handles errors gracefully and logs relevant information.
+    """
     try:
         # Log the entire message object for debugging
         logger.debug(f"Received group message from {message.from_user.username} in chat {message.chat.id}")
