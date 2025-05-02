@@ -39,3 +39,15 @@ bot_memory.db
 *.wma
 *.webm
 temp_audio/
+
+# Telegram files
+*.session
+*.session_v2
+*.session_v3
+*.session_v4
+*.session_v5
+*.session_v6
+
+# Cursor    
+.cursorrules
+.cursor/

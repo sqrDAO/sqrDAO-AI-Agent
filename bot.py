@@ -161,20 +161,22 @@ async def handle_group_message(message: Message, context: ContextTypes.DEFAULT_T
         # Check if the bot is mentioned in the message
         bot_username_with_at = f"@{context.bot.username}"
         bot_mentioned = False
-        for entity in message.entities:
-        # Check if it's a mention entity
+        for entity in message.entities or []:
+            # Handle @username mentions
             if entity.type == telegram.constants.MessageEntityType.MENTION:
-            # Extract the actual text corresponding to the entity
                 start = entity.offset
                 end = start + entity.length
                 mentioned_text = message.text[start:end]
-
                 logger.debug(f"Checking mention entity: Type={entity.type}, Offset={start}, Length={entity.length}, Text='{mentioned_text}'")
-
-                # Compare the extracted text directly with the bot's username
                 if mentioned_text == bot_username_with_at:
                     bot_mentioned = True
-                    break # Exit loop once mention is found
+                    break
+            # Handle clickable text mentions directly referencing the bot
+            elif entity.type == telegram.constants.MessageEntityType.TEXT_MENTION:
+                if entity.user and entity.user.id == context.bot.id:
+                    logger.debug("Detected text_mention entity for bot.")
+                    bot_mentioned = True
+                    break
         
         # Log the result of the mention check
         if bot_mentioned:

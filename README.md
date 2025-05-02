@@ -14,7 +14,7 @@ This AI agent is a project by sqrFUND, providing intelligent assistance for the 
 - 🤖 AI-powered responses using Google's Gemini 2.0 Flash model
 - 📚 Knowledge base management
 - 👥 Member management system
-- 💬 Group chat support
+- 💬 Group chat support (responds only when explicitly mentioned in group chats)
 - 🔍 Web search capabilities
 - 💰 SQR token functions (information & balance checking)
 - 📢 Mass messaging system
@@ -73,6 +73,10 @@ The bot automatically detects and tracks groups when:
 ### Manual Group Management
 Authorized members can manage groups using the following commands:
 - `/list_groups` - View all tracked groups
+
+### Group Chat Interaction
+- In group and supergroup chats, the bot ignores all messages unless explicitly mentioned using `@botusername` or a direct text mention.
+- This ensures the bot responds only to relevant messages and avoids unwanted noise.
 
 ## Mass Messaging
 
