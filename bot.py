@@ -214,25 +214,23 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         # Log the context_messages
         logger.debug(f"context_messages: {context_messages}, type: {type(context_messages)}")
 
-        # Prepare context for the model
-        context_text = " ".join(
-            [f"Previous: {msg[0]} Response: {msg[1]}" for msg in context_messages if len(msg) >= 2 and msg[0] and msg[1]]
-        )
+        # Format context entries for the model
+        formatted_context = format_context(context_messages)
 
-        # Log the context_text
-        logger.debug(f"context_text: {context_text}, type: {type(context_text)}")
+        # Log the formatted_context
+        logger.debug(f"formatted_context: {formatted_context}, type: {type(formatted_context)}")
 
-        # Process message with context
-        response = await process_message_with_context(message.text, context_text)
+        # Process message with context entries
+        response = await process_message_with_context(message.text, context_messages)
 
         logger.debug(f"response: {response}, type: {type(response)}")
         
-        # Store conversation
+        # Store conversation with formatted context
         db.store_conversation(
             message.from_user.id,
             message.text,
             response,
-            context=context_text
+            context=formatted_context
         )
         
         return response
@@ -241,8 +239,8 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         logger.debug(f"Error in process_message_with_context_and_reply: {str(e)}")
         return get_error_message('processing_error')
 
-async def process_message_with_context(message, context):
-    """Process the message with context and prepare the response."""
+async def process_message_with_context(message, context_entries):
+    """Process the message with context entries and prepare the response."""
     logger.debug(f"Processing message with context: {message}, type: {type(message)}")
 
     # Check if message is a valid string
@@ -268,7 +266,7 @@ async def process_message_with_context(message, context):
         knowledge_text = str(knowledge_text)  # Convert to string if necessary
 
     # Step 3: Format context
-    context_text = format_context(context)
+    context_text = format_context(context_entries)
     
     # Log the type of context_text
     logger.debug(f"context_text: {context_text}, type: {type(context_text)}")

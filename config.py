@@ -3,10 +3,6 @@ from dotenv import load_dotenv
 from telegram.ext.filters import BaseFilter
 import logging
 
-# Initialize the logger
-logging.basicConfig(level=logging.INFO)  # Set the logging level as needed
-logger = logging.getLogger(__name__)
-
 # Load environment variables
 load_dotenv()
 

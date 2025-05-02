@@ -3,12 +3,12 @@ import logging
 from typing import Optional, List, Tuple
 import re
 from bs4 import BeautifulSoup
-from trafilatura import extract
 from utils.retry import with_retry, TransientError
 from config import ERROR_MESSAGES, SUCCESS_MESSAGES, SQR_TOKEN_MINT
 import json
 import bleach  # Add this import
 from telegram.constants import ParseMode  # Import ParseMode
+import asyncio  # For running blocking rendering in thread
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def extract_urls(text: str) -> List[str]:
     return re.findall(url_pattern, text)
 
 @with_retry(max_attempts=3)
-async def get_webpage_content(url: str, max_length: int = 10000) -> Optional[str]:
+async def get_webpage_content(url: str, max_length: int = 100000) -> Optional[str]:
     """Fetch main content from a webpage using httpx.
     
     Args:
@@ -86,14 +86,28 @@ async def get_webpage_content(url: str, max_length: int = 10000) -> Optional[str
             response = await client.get(url)
             response.raise_for_status()
             
-            # Try trafilatura first
-            content = extract(response.text)
-            if content:
-                return content[:max_length]  # Limit to max_length chars
-            
-            # Fallback to BeautifulSoup
+            # Attempt dynamic JS rendering via requests_html
+            try:
+                from requests_html import HTMLSession
+                def _render():
+                    # Setup a new event loop for rendering thread
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    session = HTMLSession()
+                    resp = session.get(url)
+                    resp.html.render(timeout=30)
+                    return resp.html.text
+                rendered_text = await asyncio.to_thread(_render)
+                if rendered_text:
+                    logger.info(f"requests_html rendering successful: {rendered_text}")
+                    return rendered_text[:max_length]
+            except Exception as e:
+                logger.warning(f"requests_html rendering failed: {e}")
+
+            # Fallback to static BeautifulSoup extraction
             soup = BeautifulSoup(response.text, 'html.parser')
             text = soup.get_text(separator=' ', strip=True)
+            logger.info(f"BeautifulSoup extraction successful: {text}")
             return text[:max_length] if text else None
             
     except httpx.HTTPError as e:
@@ -314,6 +328,7 @@ def format_context(context):
         context_text = "Previous relevant conversations:\n"
         for entry in context:
             if len(entry) >= 2:
+                logger.debug(f"format_context called with entry: {entry}")
                 prev_msg, prev_resp = entry[:2]
                 # Sanitize user input to prevent injection
                 prev_msg = sanitize_input(prev_msg)
