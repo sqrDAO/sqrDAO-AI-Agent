@@ -379,7 +379,11 @@ async def periodic_summarization_check(
     check_interval: int = JOB_CHECK_TIMEOUT_SECONDS,
     summary_type: str = 'full'
 ) -> None:
-    """Periodically check the status of a space summarization job."""
+    """
+    Periodically polls the status of a summarization job and delivers the result to the user.
+    
+    This function checks the status of a Twitter Space summarization job at regular intervals, up to a maximum number of attempts. Upon successful completion, it sends the summary to the user as either text (splitting into multiple messages if necessary) or audio, depending on the request type. It also provides options for further editing or shortening the summary. Handles errors, timeouts, and user notifications, and ensures only one status check runs per job at a time.
+    """
     if job_id not in job_locks:
         job_locks[job_id] = asyncio.Lock()
 
