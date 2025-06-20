@@ -9,6 +9,8 @@ from telegram import Update, Message
 from telegram.constants import ParseMode
 import re
 import telegram
+import asyncio
+from utils.rag_api import send_chat_message_to_rag_api
 
 # Import handlers from other modules
 from handlers.general import (
@@ -73,6 +75,8 @@ try:
 except Exception as e:
     logger.error(f"Error initializing or testing Gemini model: {str(e)}")
     raise
+
+RAG_API_KEY = os.getenv("RAG_API_KEY")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming messages."""
@@ -239,8 +243,8 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         logger.debug(f"Error in process_message_with_context_and_reply: {str(e)}")
         return get_error_message('processing_error')
 
-async def process_message_with_context(message, context_entries):
-    """Process the message with context entries and prepare the response."""
+async def process_message_with_context(message, context_entries, context_obj=None):
+    """Process the message with context entries and prepare the response using the RAG API."""
     logger.debug(f"Processing message with context: {message}, type: {type(message)}")
 
     # Check if message is a valid string
@@ -248,47 +252,37 @@ async def process_message_with_context(message, context_entries):
         logger.error("Invalid message input. Must be a non-empty string.")
         return "Invalid message input."
 
-    # Step 1: Extract meaningful keywords
-    keywords = extract_keywords(message)
-    
-    logger.debug(f"Keywords: {keywords}, type: {type(keywords)}")
-    
-    # Step 2: Retrieve relevant knowledge
-    knowledge_text = await retrieve_knowledge(db, keywords)
-    
-    # Log the types of knowledge_text and message
-    logger.debug(f"knowledge_text: {knowledge_text}, type: {type(knowledge_text)}")
-    logger.debug(f"message: {message}, type: {type(message)}")
+    # Prepare fallback context if no context_entries
+    fallback_context = None
+    if not context_entries:
+        # Use bot memory data as fallback (e.g., from context_obj or a default string)
+        fallback_context = str(getattr(context_obj, 'bot_memory', '')) if context_obj else ""
+    else:
+        fallback_context = None
 
-    # Ensure knowledge_text is a string
-    if not isinstance(knowledge_text, str):
-        logger.error(f"Expected knowledge_text to be a string, got {type(knowledge_text)}")
-        knowledge_text = str(knowledge_text)  # Convert to string if necessary
-
-    # Step 3: Format context
-    context_text = format_context(context_entries)
-    
-    # Log the type of context_text
-    logger.debug(f"context_text: {context_text}, type: {type(context_text)}")
-
-    # Step 4: Combine context with current message and knowledge
-    prompt = f"{context_text}\n{knowledge_text}\nCurrent message: {message}\n\nPlease provide a response that takes into account both the context of previous conversations and the stored knowledge if relevant."
-    
-    # Log the prompt
-    logger.debug(f"prompt: {prompt}, type: {type(prompt)}")
+    # Retrieve conversation_id from context.user_data if available
+    conversation_id = None
+    if context_obj and hasattr(context_obj, 'user_data'):
+        conversation_id = context_obj.user_data.get('conversation_id')
 
     try:
-        # Generate response using Gemini
-        response = model.generate_content(prompt)
-        
-        if not hasattr(response, 'text') or not response.text:
-            return "I apologize, but I couldn't generate a response. Please try rephrasing your question."
-            
-        return response.text
-        
+        # Call the RAG API and collect the streaming response
+        response_chunks = []
+        async for chunk in send_chat_message_to_rag_api(
+            message=message,
+            api_key=RAG_API_KEY,
+            conversation_id=conversation_id,
+            files=None,  # File support to be added in a follow-up step
+            fallback_context=fallback_context
+        ):
+            response_chunks.append(chunk)
+        response_text = ''.join(response_chunks)
+
+        # Optionally, parse and store conversation_id from the response headers or body if provided (future enhancement)
+        return response_text
     except Exception as e:
-        logger.error(f"Error processing message with context: {str(e)}")
-        return "I encountered an error while processing your message. Please try again."
+        logger.error(f"Error processing message with RAG API: {str(e)}")
+        return f"I encountered an error while processing your message: {str(e)}"
 
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle updates to chat member status."""
@@ -395,9 +389,8 @@ def main():
             ("sqr_info", "Get SQR token information"),
             ("summarize_space", "Summarize a Twitter Space")
         ]
-        
-        application.bot.set_my_commands(commands)
-            
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(application.bot.set_my_commands(commands))
         # Run the bot
         application.run_polling()
 

@@ -20,3 +20,4 @@ tenacity>=8.2.3
 httpx>=0.26.0
 bleach>=6.0.0
 requests_html>=0.10.0
+aiohttp
