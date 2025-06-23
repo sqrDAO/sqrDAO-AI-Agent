@@ -1,7 +1,10 @@
 import aiohttp
+import os
+import logging
 from typing import Optional, List, Tuple, AsyncGenerator
 
-RAG_API_URL = "http://rag.sqrfund.ai/api/chat/message"
+RAG_API_URL = os.getenv("RAG_API_URL", "http://127.0.0.1:5000/api/chat/message")
+logger = logging.getLogger(__name__)
 
 async def send_chat_message_to_rag_api(
     message: str,
@@ -31,10 +34,11 @@ async def send_chat_message_to_rag_api(
     if fallback_context:
         data["context"] = fallback_context
 
-    form = aiohttp.FormData()
-    for k, v in data.items():
-        form.add_field(k, v)
+    # If files are attached, use multipart/form-data
     if files:
+        form = aiohttp.FormData()
+        for k, v in data.items():
+            form.add_field(k, v)
         for filename, file_bytes, mime_type in files:
             form.add_field(
                 "files[]",
@@ -42,19 +46,60 @@ async def send_chat_message_to_rag_api(
                 filename=filename,
                 content_type=mime_type
             )
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(RAG_API_URL, headers=headers, data=form) as resp:
-            content_type = resp.headers.get("Content-Type", "")
-            if resp.status == 200 and content_type.startswith("text/plain"):
-                async for chunk, _ in resp.content.iter_chunks():
-                    if chunk:
-                        yield chunk.decode("utf-8", errors="replace")
-            else:
-                # Try to parse error JSON
-                try:
-                    error_json = await resp.json()
-                    error_msg = error_json.get("error") or str(error_json)
-                except Exception:
-                    error_msg = await resp.text()
-                raise Exception(f"RAG API error ({resp.status}): {error_msg}") 
+        logger.debug(f"Sending multipart/form-data to {RAG_API_URL} with headers: {headers}")
+        async with aiohttp.ClientSession() as session:
+            async with session.post(RAG_API_URL, headers=headers, data=form) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+                if resp.status == 200 and content_type.startswith("text/plain"):
+                    async for chunk, _ in resp.content.iter_chunks():
+                        if chunk:
+                            yield chunk.decode("utf-8", errors="replace")
+                elif resp.status == 200 and content_type.startswith("application/json"):
+                    # Accept JSON response as valid if it contains 'response_text'
+                    try:
+                        json_data = await resp.json()
+                        if "error" in json_data:
+                            raise Exception(f"RAG API error (200): {json_data['error']}")
+                        if "response_text" in json_data:
+                            yield json_data["response_text"]
+                        else:
+                            yield str(json_data)
+                    except Exception as e:
+                        raise Exception(f"RAG API error (200): {str(e)}")
+                else:
+                    try:
+                        error_json = await resp.json()
+                        error_msg = error_json.get("error") or str(error_json)
+                    except Exception:
+                        error_msg = await resp.text()
+                    raise Exception(f"RAG API error ({resp.status}): {error_msg}")
+    else:
+        # No files: use application/json
+        headers["Content-Type"] = "application/json"
+        logger.debug(f"Sending application/json to {RAG_API_URL} with headers: {headers} and data: {data}")
+        async with aiohttp.ClientSession() as session:
+            async with session.post(RAG_API_URL, headers=headers, json=data) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+                if resp.status == 200 and content_type.startswith("text/plain"):
+                    async for chunk, _ in resp.content.iter_chunks():
+                        if chunk:
+                            yield chunk.decode("utf-8", errors="replace")
+                elif resp.status == 200 and content_type.startswith("application/json"):
+                    # Accept JSON response as valid if it contains 'response_text'
+                    try:
+                        json_data = await resp.json()
+                        if "error" in json_data:
+                            raise Exception(f"RAG API error (200): {json_data['error']}")
+                        if "response_text" in json_data:
+                            yield json_data["response_text"]
+                        else:
+                            yield str(json_data)
+                    except Exception as e:
+                        raise Exception(f"RAG API error (200): {str(e)}")
+                else:
+                    try:
+                        error_json = await resp.json()
+                        error_msg = error_json.get("error") or str(error_json)
+                    except Exception:
+                        error_msg = await resp.text()
+                    raise Exception(f"RAG API error ({resp.status}): {error_msg}") 
