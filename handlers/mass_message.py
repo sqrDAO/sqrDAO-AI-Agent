@@ -56,8 +56,9 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "❌ Please provide a message and an optional grouptype.\n"
                     "Usage:\n"
                     "• /mass_message [message] | [grouptype]\n"
-                    "• Example: /mass_message Hello everyone | sqrdao\n"
-                    "If grouptype is 'sqrdao', the message will only be sent to groups/channels with 'sqrdao' in their title."
+                    "• Example: /mass_message Hello|n|World | sqrdao\n"
+                    "If grouptype is 'sqrdao', 'sqrfund', 'summit', or 'web3', the message will only be sent to groups/channels with that keyword in their title.\n\n"
+                    "<b>Tip:</b> For multi-line messages, use <code>|n|</code> to insert a line break. Example: <code>/mass_message Line 1|n|Line 2|n|Line 3</code>"
                 )
                 try:
                     await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
@@ -68,6 +69,10 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Parse the message and grouptype from arguments
             raw_line = " ".join(context.args)
             message, grouptype = parse_mass_message_input(raw_line)
+
+        # Replace custom line break token with actual line breaks
+        if message:
+            message = message.replace('|n|', '\n')  # Allow users to specify line breaks in text-only messages
 
         if not message and not media:
             await update.message.reply_text(
@@ -86,6 +91,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filtered_groups = [g for g in all_groups if "summit" in g['title'].lower()]
         elif grouptype == "sqrfund":
             filtered_groups = [g for g in all_groups if "sqrfund" in g['title'].lower()]
+        elif grouptype == "web3":
+            filtered_groups = [g for g in all_groups if "web3" in g['title'].lower()]
         elif grouptype == "both":
             filtered_groups = [g for g in all_groups if "sqrdao" in g['title'].lower() or "summit" in g['title'].lower() or "sqrfund" in g['title'].lower()]
         else:
@@ -209,6 +216,8 @@ async def mass_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             summary += "📝 Message was sent to Summit groups only\n\n"
         elif grouptype == "sqrfund":
             summary += "📝 Message was sent to sqrFUND groups only\n\n"
+        elif grouptype == "web3":
+            summary += "📝 Message was sent to Web3 community groups only\n\n"
         elif grouptype == "both":
             summary += "📝 Message was sent to both sqrDAO and sqrFUND groups\n\n"
         else:
