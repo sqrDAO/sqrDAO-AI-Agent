@@ -170,26 +170,22 @@ def get_announcement_prefix(grouptype: Optional[str]) -> str:
 
 def parse_mass_message_input(raw_input: str) -> tuple[str, Optional[str]]:
     """Parse input for mass messages.
-    
+    Splits on the last '|' so that message can contain '|n|' tokens for line breaks.
     Args:
         raw_input: The input string to parse, expected format: "message | grouptype"
-        
     Returns:
         tuple[str, Optional[str]]: A tuple containing (message, grouptype)
     """
-    # Split by the pipe character to separate message and grouptype
-    parts = raw_input.split('|', 1)
-    
+    # Split by the last pipe character to separate message and grouptype
+    parts = raw_input.rsplit('|', 1)
     if len(parts) == 2:
-        # If we have both parts, strip whitespace and return
         message = parts[0].strip()
         grouptype = parts[1].strip().lower()
         # Validate grouptype
-        if grouptype not in ['sqrdao', 'sqrfund', 'summit', 'both']:
+        if grouptype not in ['sqrdao', 'sqrfund', 'summit', 'both', 'web3']:
             grouptype = None
         return message, grouptype
     else:
-        # If no pipe found, return the whole input as message with no grouptype
         return raw_input.strip(), None
 
 def get_error_message(key: str) -> str:
