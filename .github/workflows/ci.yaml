@@ -1,0 +1,28 @@
+name: Deploy via SSH
+
+on:
+  push:
+    branches:
+      - main  # Trigger workflow on push to the `main` branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Checkout Code
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    # Step 5: Deploy via SSH
+    - name: deploy service
+      uses: appleboy/ssh-action@v1.2.0
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.KEY }}
+        port: ${{ secrets.PORT }}
+        script: |
+          cd ~/sqrDAO-AI-Agent
+          git pull origin main
+          sudo systemctl restart sqrdao-bot.service
