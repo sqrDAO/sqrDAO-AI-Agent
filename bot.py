@@ -9,6 +9,8 @@ from telegram import Update, Message
 from telegram.constants import ParseMode
 import re
 import telegram
+import asyncio
+from utils.rag_api import send_chat_message_to_rag_api
 
 # Import handlers from other modules
 from handlers.general import (
@@ -73,6 +75,11 @@ try:
 except Exception as e:
     logger.error(f"Error initializing or testing Gemini model: {str(e)}")
     raise
+
+RAG_API_KEY = os.getenv("RAG_API_KEY")
+if not RAG_API_KEY:
+    logger.error("RAG_API_KEY environment variable is not set. Application cannot start without it.")
+    raise ValueError("RAG_API_KEY environment variable is required but not set.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming messages."""
@@ -214,25 +221,23 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         # Log the context_messages
         logger.debug(f"context_messages: {context_messages}, type: {type(context_messages)}")
 
-        # Prepare context for the model
-        context_text = " ".join(
-            [f"Previous: {msg[0]} Response: {msg[1]}" for msg in context_messages if len(msg) >= 2 and msg[0] and msg[1]]
-        )
+        # Format context entries for the model
+        formatted_context = format_context(context_messages)
 
-        # Log the context_text
-        logger.debug(f"context_text: {context_text}, type: {type(context_text)}")
+        # Log the formatted_context
+        logger.debug(f"formatted_context: {formatted_context}, type: {type(formatted_context)}")
 
-        # Process message with context
-        response = await process_message_with_context(message.text, context_text)
+        # Process message with context entries
+        response = await process_message_with_context(message.text, context_messages)
 
         logger.debug(f"response: {response}, type: {type(response)}")
         
-        # Store conversation
+        # Store conversation with formatted context
         db.store_conversation(
             message.from_user.id,
             message.text,
             response,
-            context=context_text
+            context=formatted_context
         )
         
         return response
@@ -241,8 +246,8 @@ async def process_message_with_context_and_reply(message: Message, context: Cont
         logger.debug(f"Error in process_message_with_context_and_reply: {str(e)}")
         return get_error_message('processing_error')
 
-async def process_message_with_context(message, context):
-    """Process the message with context and prepare the response."""
+async def process_message_with_context(message, context_entries, context_obj=None):
+    """Process the message with context entries and prepare the response using the RAG API."""
     logger.debug(f"Processing message with context: {message}, type: {type(message)}")
 
     # Check if message is a valid string
@@ -250,47 +255,64 @@ async def process_message_with_context(message, context):
         logger.error("Invalid message input. Must be a non-empty string.")
         return "Invalid message input."
 
-    # Step 1: Extract meaningful keywords
-    keywords = extract_keywords(message)
-    
-    logger.debug(f"Keywords: {keywords}, type: {type(keywords)}")
-    
-    # Step 2: Retrieve relevant knowledge
-    knowledge_text = await retrieve_knowledge(db, keywords)
-    
-    # Log the types of knowledge_text and message
-    logger.debug(f"knowledge_text: {knowledge_text}, type: {type(knowledge_text)}")
-    logger.debug(f"message: {message}, type: {type(message)}")
+    # Prepare fallback context if no context_entries
+    fallback_context = None
+    if not context_entries:
+        # Use bot memory data as fallback (e.g., from context_obj or a default string)
+        fallback_context = str(getattr(context_obj, 'bot_memory', '')) if context_obj else ""
+    else:
+        fallback_context = None
 
-    # Ensure knowledge_text is a string
-    if not isinstance(knowledge_text, str):
-        logger.error(f"Expected knowledge_text to be a string, got {type(knowledge_text)}")
-        knowledge_text = str(knowledge_text)  # Convert to string if necessary
-
-    # Step 3: Format context
-    context_text = format_context(context)
-    
-    # Log the type of context_text
-    logger.debug(f"context_text: {context_text}, type: {type(context_text)}")
-
-    # Step 4: Combine context with current message and knowledge
-    prompt = f"{context_text}\n{knowledge_text}\nCurrent message: {message}\n\nPlease provide a response that takes into account both the context of previous conversations and the stored knowledge if relevant."
-    
-    # Log the prompt
-    logger.debug(f"prompt: {prompt}, type: {type(prompt)}")
+    # Retrieve conversation_id from context.user_data if available
+    conversation_id = None
+    if context_obj and hasattr(context_obj, 'user_data'):
+        conversation_id = context_obj.user_data.get('conversation_id')
 
     try:
-        # Generate response using Gemini
-        response = model.generate_content(prompt)
-        
-        if not hasattr(response, 'text') or not response.text:
-            return "I apologize, but I couldn't generate a response. Please try rephrasing your question."
-            
-        return response.text
-        
+        # Call the RAG API and collect the streaming response
+        response_chunks = []
+        conversation_id_extracted = None
+        async for chunk in send_chat_message_to_rag_api(
+            message=message,
+            api_key=RAG_API_KEY,
+            conversation_id=conversation_id,
+            files=None,  # File support to be added in a follow-up step
+            fallback_context=fallback_context
+        ):
+            # Try to extract conversation_id from JSON if possible
+            try:
+                import json
+                chunk_json = json.loads(chunk)
+                # If the chunk is a dict and has a session_id or conversation_id, extract it
+                if isinstance(chunk_json, dict):
+                    if 'session_id' in chunk_json:
+                        conversation_id_extracted = chunk_json['session_id']
+                    elif 'conversation_id' in chunk_json:
+                        conversation_id_extracted = chunk_json['conversation_id']
+                    # If the chunk contains 'response_text', treat as text response
+                    if 'response_text' in chunk_json:
+                        response_chunks.append(chunk_json['response_text'])
+                    elif 'answer' in chunk_json:
+                        response_chunks.append(chunk_json['answer'])
+                    else:
+                        # Fallback: append the stringified chunk
+                        response_chunks.append(str(chunk_json))
+                else:
+                    response_chunks.append(chunk)
+            except Exception:
+                # Not JSON, treat as plain text
+                response_chunks.append(chunk)
+        response_text = ''.join(response_chunks)
+
+        # Persist the conversation_id for future context
+        if conversation_id_extracted and context_obj and hasattr(context_obj, 'user_data'):
+            context_obj.user_data['conversation_id'] = conversation_id_extracted
+            logger.info(f"Persisted conversation_id: {conversation_id_extracted}")
+
+        return response_text
     except Exception as e:
-        logger.error(f"Error processing message with context: {str(e)}")
-        return "I encountered an error while processing your message. Please try again."
+        logger.error(f"Error processing message with RAG API: {str(e)}")
+        return f"I encountered an error while processing your message: {str(e)}"
 
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle updates to chat member status."""
@@ -397,9 +419,8 @@ def main():
             ("sqr_info", "Get SQR token information"),
             ("summarize_space", "Summarize a Twitter Space")
         ]
-        
-        application.bot.set_my_commands(commands)
-            
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(application.bot.set_my_commands(commands))
         # Run the bot
         application.run_polling()
 
