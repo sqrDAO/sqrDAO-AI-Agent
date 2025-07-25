@@ -77,6 +77,9 @@ except Exception as e:
     raise
 
 RAG_API_KEY = os.getenv("RAG_API_KEY")
+if not RAG_API_KEY:
+    logger.error("RAG_API_KEY environment variable is not set. Application cannot start without it.")
+    raise ValueError("RAG_API_KEY environment variable is required but not set.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming messages."""
@@ -268,6 +271,7 @@ async def process_message_with_context(message, context_entries, context_obj=Non
     try:
         # Call the RAG API and collect the streaming response
         response_chunks = []
+        conversation_id_extracted = None
         async for chunk in send_chat_message_to_rag_api(
             message=message,
             api_key=RAG_API_KEY,
@@ -275,10 +279,36 @@ async def process_message_with_context(message, context_entries, context_obj=Non
             files=None,  # File support to be added in a follow-up step
             fallback_context=fallback_context
         ):
-            response_chunks.append(chunk)
+            # Try to extract conversation_id from JSON if possible
+            try:
+                import json
+                chunk_json = json.loads(chunk)
+                # If the chunk is a dict and has a session_id or conversation_id, extract it
+                if isinstance(chunk_json, dict):
+                    if 'session_id' in chunk_json:
+                        conversation_id_extracted = chunk_json['session_id']
+                    elif 'conversation_id' in chunk_json:
+                        conversation_id_extracted = chunk_json['conversation_id']
+                    # If the chunk contains 'response_text', treat as text response
+                    if 'response_text' in chunk_json:
+                        response_chunks.append(chunk_json['response_text'])
+                    elif 'answer' in chunk_json:
+                        response_chunks.append(chunk_json['answer'])
+                    else:
+                        # Fallback: append the stringified chunk
+                        response_chunks.append(str(chunk_json))
+                else:
+                    response_chunks.append(chunk)
+            except Exception:
+                # Not JSON, treat as plain text
+                response_chunks.append(chunk)
         response_text = ''.join(response_chunks)
 
-        # Optionally, parse and store conversation_id from the response headers or body if provided (future enhancement)
+        # Persist the conversation_id for future context
+        if conversation_id_extracted and context_obj and hasattr(context_obj, 'user_data'):
+            context_obj.user_data['conversation_id'] = conversation_id_extracted
+            logger.info(f"Persisted conversation_id: {conversation_id_extracted}")
+
         return response_text
     except Exception as e:
         logger.error(f"Error processing message with RAG API: {str(e)}")

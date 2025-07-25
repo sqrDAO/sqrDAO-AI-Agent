@@ -99,7 +99,7 @@ async def get_webpage_content(url: str, max_length: int = 100000) -> Optional[st
                     return resp.html.text
                 rendered_text = await asyncio.to_thread(_render)
                 if rendered_text:
-                    logger.info(f"requests_html rendering successful: {rendered_text}")
+                    logger.info(f"requests_html rendering successful: content length={len(rendered_text)} for URL: {url}")
                     return rendered_text[:max_length]
             except Exception as e:
                 logger.warning(f"requests_html rendering failed: {e}")
@@ -107,7 +107,7 @@ async def get_webpage_content(url: str, max_length: int = 100000) -> Optional[st
             # Fallback to static BeautifulSoup extraction
             soup = BeautifulSoup(response.text, 'html.parser')
             text = soup.get_text(separator=' ', strip=True)
-            logger.info(f"BeautifulSoup extraction successful: {text}")
+            logger.info(f"BeautifulSoup extraction successful: content length={len(text)} for URL: {url}")
             return text[:max_length] if text else None
             
     except httpx.HTTPError as e:
