@@ -3,7 +3,7 @@ import os
 import logging
 from typing import Optional, List, Tuple, AsyncGenerator
 
-RAG_API_URL = os.getenv("RAG_API_URL", "http://127.0.0.1:5000/api/chat/message")
+RAG_API_URL = os.getenv("RAG_API_URL", "https://rag.sqrfund.ai/api/chat/message")
 logger = logging.getLogger(__name__)
 
 async def _handle_response(resp: aiohttp.ClientResponse) -> AsyncGenerator[str, None]:
